@@ -169,3 +169,6 @@ Packages/packages-lock.json linguist-generated
 
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
+
+# glTF 모델 (VARCO 로 뽑은 유닛·맵 모델)
+*.glb                   lfs
