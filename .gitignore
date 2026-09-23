@@ -112,3 +112,18 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# ── 제네시스 ──
+# 에셋 스토어 팩 — 라이선스상 저장소에 올려 배포할 수 없다.
+# 다른 PC 에서는 Package Manager > My Assets 에서 다시 받아 같은 자리에 넣는다
+/Assets/@Asset/
+/Assets/@Asset.meta
+/Assets/Kevin Iglesias/
+/Assets/Kevin Iglesias.meta
+/Assets/MilkyWay/
+/Assets/MilkyWay.meta
+# 작업 중 찍은 스크린샷, 에디터 복구 파일
+/Assets/Screenshots/
+/Assets/Screenshots.meta
+/Assets/_Recovery/
+/Assets/_Recovery.meta
