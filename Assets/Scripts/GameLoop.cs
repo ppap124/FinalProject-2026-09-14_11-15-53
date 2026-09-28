@@ -1,13 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 라운드 진행 · 스폰 · 보스 · 필드 마릿수 관리.
 ///
-/// 패배 조건 둘:
+/// 패배 조건 셋:
 ///   1) 필드에 몬스터가 fieldLimit(100)을 넘으면
 ///   2) 보스를 bossGraceRounds(2) 안에 못 잡으면
+///   3) 최종 라운드(50)의 카오스를 finalTimeLimit 안에 못 잡으면
+///
+/// 승리 조건: 카오스를 잡는다. 50라운드는 넘어가지 않는다 — 카오스가 곧 끝이다.
 /// </summary>
 public class GameLoop : MonoBehaviour
 {
@@ -59,6 +63,23 @@ public class GameLoop : MonoBehaviour
     [Header("패배 조건")]
     public int fieldLimit = 100;
 
+    [Header("최종 — 50라운드 카오스")]
+    public int finalRound = 50;
+    [Tooltip("카오스를 잡을 시간(초). 넘기면 패배. 다음 라운드로 넘어가지 않는다")]
+    public float finalTimeLimit = 120f;
+    [Tooltip("보스 체력 공식 위에 곱하는 배수")]
+    public float finalHpMult = 1.5f;
+    [Tooltip("카오스 지름(월드). 다른 보스보다 확실히 커야 격이 선다")]
+    public float chaosDiameter = 8f;
+    [Tooltip("카오스는 걷지 않고 떠서 온다 — 바닥에서 핵까지 높이")]
+    public float chaosHover = 4.2f;
+    public GameObject chaosRing, chaosWorld, chaosRubble;
+
+    [Header("끝")]
+    [Tooltip("끝나는 순간 이 배속으로 늦췄다가, endFreezeDelay 뒤에 멈춘다")]
+    public float endSlowMo = 0.3f;
+    public float endFreezeDelay = 2.2f;
+
     enum Phase { Prep, Round, Over }
 
     readonly List<Monster> alive = new List<Monster>();
@@ -69,11 +90,26 @@ public class GameLoop : MonoBehaviour
     float spawnTimer;
     int remainingToSpawn;
     string overReason = "";
+    bool won;
+    Monster chaos;
+    float overAt = -1f;
+    float endPlayTime;
+    int kills;
 
     public int AliveCount => alive.Count;
     public bool IsOver => phase == Phase.Over;
     public bool InPrep => phase == Phase.Prep;
     public float PhaseTimeLeft => timer;
+    public bool Won => won;
+    public string OverReason => overReason;
+    public bool IsFinalRound => round >= finalRound;
+    public Monster Chaos => chaos;
+    public int Kills => kills;
+    /// <summary>판을 시작한 뒤 흐른 게임 시간(초). 끝났으면 끝난 순간에서 멈춘다</summary>
+    public float PlayTime => overAt >= 0f ? endPlayTime : Time.timeSinceLevelLoad;
+
+    /// <summary>판이 끝났다. true 면 승리. 결과 화면이 이걸 듣는다</summary>
+    public event System.Action<bool> Ended;
 
     /// <summary>라운드가 시작될 때 라운드 번호를 넘긴다. 제단이 빛을 솟구치는 신호.</summary>
     public event System.Action<int> RoundStarted;
@@ -99,9 +135,9 @@ public class GameLoop : MonoBehaviour
 
     void Update()
     {
-        HandleSpeedKeys();
+        if (phase == Phase.Over) { FreezeAfterEnd(); return; }
 
-        if (phase == Phase.Over) return;
+        HandleSpeedKeys();
 
         timer -= Time.deltaTime;
 
@@ -114,6 +150,14 @@ public class GameLoop : MonoBehaviour
 
         SpawnTick();
         CheckBossDeadline();
+        if (phase == Phase.Over) return;
+
+        // 최종 라운드는 넘어가지 않는다 — 카오스를 잡으면 승리(OnMonsterDied), 시간이 다 되면 패배
+        if (IsFinalRound)
+        {
+            if (timer <= 0f) GameOver("제한 시간 안에 카오스를 막지 못했습니다");
+            return;
+        }
 
         if (timer <= 0f && remainingToSpawn <= 0)
         {
@@ -137,7 +181,13 @@ public class GameLoop : MonoBehaviour
         phase = Phase.Round;
         timer = roundTime;
 
-        if (IsBossRound(round))
+        if (IsFinalRound)
+        {
+            remainingToSpawn = 0;
+            timer = finalTimeLimit;
+            SpawnChaos();
+        }
+        else if (IsBossRound(round))
         {
             // 보스 라운드에는 보스만 나온다 — 순수 화력 시험
             remainingToSpawn = 0;
@@ -180,7 +230,7 @@ public class GameLoop : MonoBehaviour
         m.Init(route, MonsterHp(round), monsterSpeed);
         alive.Add(m);
 
-        if (alive.Count > fieldLimit) GameOver("필드 한계");
+        if (alive.Count > fieldLimit) GameOver($"몬스터가 필드를 메웠습니다 ({fieldLimit}마리 초과)");
     }
 
     // ── 보스 ──────────────────────────────────
@@ -211,6 +261,42 @@ public class GameLoop : MonoBehaviour
                   $"{bossGraceRounds}라운드 안에 잡아야 함");
     }
 
+    /// <summary>
+    /// 최종 보스 카오스. 걷는 몸이 아니라 떠 있는 주기라(§카오스) 모델 대신
+    /// `ChaosBoss` 가 부품을 조립한다. 판정용 큐브는 핵 높이에 띄워 숨긴다 —
+    /// 발사체가 큐브 중심을 노리므로 바닥에 두면 허공 아래를 때린다
+    /// </summary>
+    void SpawnChaos()
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = "Chaos";
+        go.transform.localScale = Vector3.one * bossSize;
+        Destroy(go.GetComponent<Collider>());
+        go.transform.position = route.GetPoint(0) + Vector3.up * chaosHover;
+        go.GetComponent<Renderer>().enabled = false;   // Monster 가 칠할 대상에서도 빠진다
+
+        // 부모 큐브의 배율을 되돌려, 지름을 월드 단위로 넣게 한다
+        GameObject body = new GameObject("ChaosBody");
+        body.transform.SetParent(go.transform, false);
+        body.transform.localScale = Vector3.one / bossSize;
+        ChaosBoss cb = body.AddComponent<ChaosBoss>();
+        cb.ringSegment = chaosRing;
+        cb.worldSphere = chaosWorld;
+        cb.rubble = chaosRubble;
+        cb.diameter = chaosDiameter;
+
+        Monster m = go.AddComponent<Monster>();
+        m.isBoss = true;
+        m.bossRound = round;
+        m.Init(route, BossHp(round) * finalHpMult, monsterSpeed * bossSpeedMult);
+
+        alive.Add(m);
+        bosses.Add(m);
+        chaos = m;
+
+        Debug.Log($"[최종] 카오스 등장   체력 {BossHp(round) * finalHpMult:N0}   제한 {finalTimeLimit:0}초");
+    }
+
     void CheckBossDeadline()
     {
         for (int i = bosses.Count - 1; i >= 0; i--)
@@ -220,7 +306,7 @@ public class GameLoop : MonoBehaviour
 
             if (round > b.bossRound + bossGraceRounds)
             {
-                GameOver($"보스 방치 (R{b.bossRound})");
+                GameOver($"{b.bossRound}라운드 보스를 {bossGraceRounds}라운드 안에 잡지 못했습니다");
                 return;
             }
         }
@@ -277,6 +363,15 @@ public class GameLoop : MonoBehaviour
         if (GoldBank.Instance != null)
             GoldBank.Instance.Add(GoldForKill(boss));
 
+        kills++;
+
+        if (m != null && m == chaos)
+        {
+            bosses.Remove(m);
+            Victory();
+            return;
+        }
+
         if (boss)
         {
             bosses.Remove(m);
@@ -311,7 +406,10 @@ public class GameLoop : MonoBehaviour
             Monster m = alive[i];
             if (m == null) continue;
 
-            float sqr = (m.transform.position - from).sqrMagnitude;
+            // 바닥 위 거리 — Unit.InRange 와 같은 기준이어야 찾자마자 놓치지 않는다
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            float sqr = d.sqrMagnitude;
             if (sqr > rangeSqr) continue;
 
             if (m.isBoss)
@@ -347,10 +445,54 @@ public class GameLoop : MonoBehaviour
 
     // ── 종료 ──────────────────────────────────
 
-    void GameOver(string reason)
+    void Victory()
+    {
+        if (phase == Phase.Over) return;
+        End(true, "카오스 격파");
+        Debug.Log($"[결과] 승리 — {round}라운드 카오스 격파   {PlayTime:0}초   처치 {kills}");
+    }
+
+    /// <summary>승패 공통 — 멈추고 결과 화면에 알린다</summary>
+    void End(bool victory, string reason)
     {
         phase = Phase.Over;
+        won = victory;
         overReason = reason;
+        endPlayTime = Time.timeSinceLevelLoad;
+        overAt = Time.unscaledTime;
+        // 바로 멈추면 마지막 한 방(카오스가 부서지는 것, 필드가 넘치는 것)이 안 보인다.
+        // 느리게 흘리다가 FreezeAfterEnd 가 세운다
+        Time.timeScale = endSlowMo;
+        if (Ended != null) Ended(victory);
+    }
+
+    void FreezeAfterEnd()
+    {
+        if (overAt >= 0f && Time.timeScale > 0f && Time.unscaledTime - overAt >= endFreezeDelay)
+            Time.timeScale = 0f;
+    }
+
+    /// <summary>같은 씬을 처음부터. 배속과 정지를 먼저 풀어야 새 판이 멈춘 채로 시작하지 않는다</summary>
+    public void Restart()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    public void Quit()
+    {
+        Time.timeScale = 1f;
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    void GameOver(string reason)
+    {
+        if (phase == Phase.Over) return;
+        End(false, reason);
 
         string souls = SoulBank.Instance != null ? $"영혼 총{SoulBank.Instance.TotalEarned}" : "-";
         string mats = MaterialShop.Instance != null ? $"재료 {MaterialShop.Instance.TotalPulled}개" : "-";
@@ -380,17 +522,25 @@ public class GameLoop : MonoBehaviour
         Keyboard k = Keyboard.current;
         if (k == null) return;
 
+        if (k.f12Key.wasPressedThisFrame) ShowDebug = !ShowDebug;   // F1~F4 는 카메라 이동(CameraRig)
+
         if (k.digit1Key.wasPressedThisFrame) Time.timeScale = 1f;
         else if (k.digit2Key.wasPressedThisFrame) Time.timeScale = 2f;
-        else if (k.digit3Key.wasPressedThisFrame) Time.timeScale = 4f;
-        else if (k.digit4Key.wasPressedThisFrame) Time.timeScale = 8f;
+        else if (k.digit3Key.wasPressedThisFrame) Time.timeScale = 3f;
+        // 8배는 밸런스 확인용 — 통계창(F12)을 켰을 때만
+        else if (ShowDebug && k.digit4Key.wasPressedThisFrame) Time.timeScale = 8f;
     }
 
     /// <summary>개발용 통계를 그릴 높이. HUD 위쪽 띠가 있으면 그 밑으로 내린다</summary>
     public static float DebugTop = 12f;
 
+    /// <summary>개발용 통계창. 플레이어에게는 안 보이게 꺼 두고 F12 로 켠다</summary>
+    public static bool ShowDebug;
+
     void OnGUI()
     {
+        if (!ShowDebug) return;
+
         GUI.skin.label.fontSize = 17;
         GUILayout.BeginArea(new Rect(12, DebugTop, 480, 340));
 
@@ -413,7 +563,7 @@ public class GameLoop : MonoBehaviour
 
         GUILayout.Space(6);
 
-        // 영혼·돈·재료는 우측 상단 ResourceHud가 맡는다
+        // 영혼·돈·재료는 HUD 위 띠가 맡는다
 
         if (ResearchLab.Instance != null)
             GUILayout.Label($"연구    {ResearchLab.Instance.Summary()}");

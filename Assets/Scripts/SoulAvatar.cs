@@ -63,19 +63,8 @@ public class SoulAvatar : MonoBehaviour
 
         Transform ring = transform.Find("SelectRing");
 
-        if (on && ring == null)
-        {
-            GameObject g = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            g.name = "SelectRing";
-            Destroy(g.GetComponent<Collider>());
-
-            g.transform.SetParent(transform, false);
-            g.transform.localPosition = new Vector3(0f, -0.9f, 0f);
-            g.transform.localScale = new Vector3(1.9f, 0.06f, 1.9f);
-
-            Renderer rr = g.GetComponent<Renderer>();
-            if (rr != null) rr.material.color = new Color(0.4f, 1f, 0.5f);
-        }
+        // 유닛과 같은 가는 고리 — 꽉 찬 원반은 불꽃을 덮는다
+        if (on && ring == null) Unit.MakeRing(transform, transform.localScale.x * 0.8f);
         else if (!on && ring != null)
         {
             Destroy(ring.gameObject);

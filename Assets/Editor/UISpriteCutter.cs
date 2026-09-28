@@ -21,8 +21,9 @@ public static class UISpriteCutter
 
     static readonly string[] Icons1 = { "Icon_Greek", "Icon_Norse", "Icon_Korean", "Icon_Gold",
                                         "Icon_Soul", "Icon_Attack", "Icon_Speed", "Icon_Range" };
-    static readonly string[] Icons2 = { "Icon_Combine", "Icon_Store", "Icon_Sell", "Icon_Move",
-                                        "Icon_Tier", "Icon_Defense", "Icon_Skill", "Icon_Cancel" };
+    // null = 시트에는 그려져 있지만 게임에서 안 쓰는 칸 (판매 · 이동 · 방어). 잘라내지 않는다
+    static readonly string[] Icons2 = { "Icon_Combine", "Icon_Store", null, null,
+                                        "Icon_Tier", null, "Icon_Skill", "Icon_Cancel" };
 
     [MenuItem("Genesis/UI 스프라이트 다시 자르기")]
     public static void CutAll()
@@ -46,6 +47,15 @@ public static class UISpriteCutter
         // 콘솔 장식 — 흰 배경만 뺀다
         if (File.Exists(Src + "crest.png")) made.Add(Cutout("crest.png", "Crest"));
         if (File.Exists(Src + "divider.png")) made.Add(Cutout("divider.png", "Divider"));
+
+        // 위 띠 — 명판(양 끝 금세공, 가운데는 곧은 테라 가로로 늘어난다), 게이지 틀(분홍 창을 뚫는다), 자원 받침
+        if (File.Exists(Src + "topplaque.png")) made.Add(Bordered(Cutout("topplaque.png", "TopPlaque"), new Vector4(250, 24, 250, 24)));
+        if (File.Exists(Src + "gaugeframe.png")) made.Add(GaugeFrame("gaugeframe.png", "GaugeFrame"));
+        if (File.Exists(Src + "socket.png")) made.Add(Cutout("socket.png", "ResSocket"));
+
+        // 결과 화면 문장 — 승리(날개 달린 해), 패배(쪼개진 문장)
+        if (File.Exists(Src + "victory.png")) made.Add(Cutout("victory.png", "Emblem_Victory"));
+        if (File.Exists(Src + "defeat.png")) made.Add(Cutout("defeat.png", "Emblem_Defeat"));
 
         // 유닛 초상화 — 꽉 찬 그림이라 그대로. 이름만 `Portrait_<UnitType>` 으로
         if (Directory.Exists(Src + "Portraits"))
@@ -130,6 +140,87 @@ public static class UISpriteCutter
         return Save(Trim(t), name);
     }
 
+    static string Bordered(string path, Vector4 border)
+    {
+        borders[path] = border;
+        return path;
+    }
+
+    /// <summary>
+    /// 게이지 틀 — 초상화 틀처럼 흰 배경과 분홍 창을 뺀 뒤, **창 가장자리를 9분할 테두리로 잡는다.**
+    /// 그러면 가운데(창)만 늘어나고 날개 끝은 제 모양을 지킨다. 창 자리는 가운데 줄·가운데 칸을
+    /// 훑어 투명해지는 곳으로 찾는다 — HUD 가 게이지 채움을 그 안에 앉힌다 (`GenesisHud.BuildTopBar`)
+    /// </summary>
+    static string GaugeFrame(string file, string name)
+    {
+        Texture2D t = Load(file);
+        Color[] px = t.GetPixels();
+        int W = t.width, H = t.height;
+        bool[] bg = FloodWhite(px, W, H, 0, 0, W, H);
+        bool[] mag = new bool[px.Length];
+        for (int i = 0; i < px.Length; i++)
+        {
+            Color c = px[i];
+            mag[i] = c.r > 0.5f && c.b > 0.5f && (c.r + c.b) * 0.5f - c.g > 0.28f;
+        }
+        // 금 테와 분홍 창이 맞닿은 곳은 둘이 섞여 **분홍빛 금색**이 된다. 창 둘레 4px 안에서
+        // 분홍 기운이 있는 칸도 지운다. 금은 r>g>b 라 (r+b)/2-g 가 음수고, 남색도 0.1 밑이라 안 걸린다.
+        // 이게 없으면 그 한 줄이 가로로 늘어나서 게이지를 따라 분홍 실선이 그어졌다
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int i = y * W + x;
+                if (bg[i] || mag[i]) { px[i] = new Color(0, 0, 0, 0); continue; }
+                Color c = px[i];
+                if ((c.r + c.b) * 0.5f - c.g <= 0.10f) continue;
+                bool near = false;
+                for (int dy = -4; dy <= 4 && !near; dy++)
+                    for (int dx = -4; dx <= 4 && !near; dx++)
+                    {
+                        int xx = x + dx, yy = y + dy;
+                        if (xx >= 0 && yy >= 0 && xx < W && yy < H && mag[yy * W + xx]) near = true;
+                    }
+                if (near) px[i] = new Color(0, 0, 0, 0);
+            }
+        Feather(px, bg, W, H);
+        t.SetPixels(px);
+        t.Apply();
+        Texture2D c2 = Trim(t);
+
+        int w = c2.width, h = c2.height;
+        Color[] p2 = c2.GetPixels();
+        int my = h / 2, mx = w / 2;
+        // 네 변 모두 "그 가장자리에서 창까지의 거리"다 — 9분할 테두리가 그 뜻이다
+        int l = Edge(p2, w, h, 0, my, 1, 0), r = Edge(p2, w, h, w - 1, my, -1, 0);
+        int b = Edge(p2, w, h, mx, 0, 0, 1), tp = Edge(p2, w, h, mx, h - 1, 0, -1);
+
+        // 창 안은 통째로 비운다. 분홍 판정에 안 걸린 반사광 한 줄이 남아 있었는데, 9분할 가운데는
+        // 가로로 늘어나서 그게 게이지 한복판을 긋는 분홍 선이 됐다
+        for (int y = b; y < h - tp; y++)
+            for (int x = l; x < w - r; x++)
+                p2[y * w + x] = new Color(0, 0, 0, 0);
+        c2.SetPixels(p2);
+        c2.Apply();
+
+        string path = Save(c2, name);
+        borders[path] = new Vector4(l, b, r, tp);
+        Debug.Log("[UI] 게이지 틀 " + w + "x" + h + " 창 테두리 L" + l + " B" + b + " R" + r + " T" + tp);
+        return path;
+    }
+
+    /// <summary>(x,y)에서 (dx,dy)로 걸으며 불투명을 지나 처음 투명해지는 칸까지의 거리</summary>
+    static int Edge(Color[] p, int w, int h, int x, int y, int dx, int dy)
+    {
+        bool seenSolid = false;
+        for (int k = 0; x >= 0 && y >= 0 && x < w && y < h; k++, x += dx, y += dy)
+        {
+            float a = p[y * w + x].a;
+            if (a > 0.5f) seenSolid = true;
+            else if (seenSolid) return k;
+        }
+        return 0;
+    }
+
     static List<string> IconSheet(string file, string[] names, Vector2Int[] rows)
     {
         Texture2D t = Load(file);
@@ -138,6 +229,7 @@ public static class UISpriteCutter
         for (int row = 0; row < 2; row++)
             for (int col = 0; col < 4; col++)
             {
+                if (names[row * 4 + col] == null) continue;   // 안 쓰는 칸 — 잘라내지 않는다
                 int x0 = col * cw, y0 = rows[row].x, h = rows[row].y - rows[row].x;
                 // 위 원점 → 아래 원점
                 Color[] px = t.GetPixels(x0, t.height - y0 - h, cw, h);
@@ -265,10 +357,15 @@ public static class UISpriteCutter
         ti.textureType = TextureImporterType.Sprite;
         ti.spriteImportMode = SpriteImportMode.Single;
         ti.alphaIsTransparency = true;
-        ti.mipmapEnabled = false;
+        // 1024 원본을 화면에서 70~200px 로 줄여 쓴다 — 밉맵이 없으면 줄일 때 픽셀이 튀어 거칠어 보인다
+        ti.mipmapEnabled = true;
+        ti.filterMode = FilterMode.Trilinear;
         ti.maxTextureSize = small.Contains(path) ? 512 : 1024;
         ti.textureCompression = TextureImporterCompression.CompressedHQ;
         Vector4 b;
+        // 테두리는 **원본 픽셀 그대로** 넣는다. 원본이 maxTextureSize 보다 커서 임포트가 줄여도,
+        // 유니티가 테두리를 같이 줄여 준다 (Sprite.border 가 줄어든 값으로 나온다). 여기서 또 줄이면
+        // 두 번 줄어서 게이지 창보다 테두리가 좁아지고, 트랙이 금 테 위로 삐져나왔다
         if (borders.TryGetValue(path, out b)) ti.spriteBorder = b;
         ti.SaveAndReimport();
     }

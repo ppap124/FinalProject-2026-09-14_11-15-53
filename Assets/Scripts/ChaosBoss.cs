@@ -51,11 +51,23 @@ public class ChaosBoss : MonoBehaviour
     public Color coreColor = new Color(1f, 0.25f, 0.55f);
 
     [Tooltip("수축했을 때의 발광 세기")]
-    public float emissionLow = 0.45f;
+    public float emissionLow = 1.2f;
 
     [Tooltip("팽창했을 때의 발광 세기. 1 을 넘으면 코어가 하얗게 타고 " +
              "색은 블룸이 실어 나른다 — 영혼 구슬에서 겪은 것과 같다")]
-    public float emissionHigh = 1.55f;
+    public float emissionHigh = 4.5f;
+
+    // 부품을 어둡게만 두면 필드에서 검은 고철 덩어리로 읽혔다 (2026-09-28). 카오스는
+    // 하나뿐이라 부품 재질을 복제해도 되므로, 겹마다 발광을 넣는다 — 안쪽은 진홍,
+    // 바깥으로 갈수록 보라로 식는다 (§카오스 색: 전 대역)
+    [Tooltip("가장 안쪽 고리의 발광색")]
+    public Color innerGlow = new Color(1f, 0.28f, 0.42f);
+    [Tooltip("가장 바깥 고리의 발광색")]
+    public Color outerGlow = new Color(0.42f, 0.2f, 1f);
+    [Tooltip("고리 발광 세기. 수축 때 절반, 팽창 때 1.5 배")]
+    public float ringGlow = 0.7f;
+    [Tooltip("핵의 점광 세기(팽창 때). 둘레 바닥과 유닛을 물들여 거리가 읽힌다")]
+    public float lightIntensity = 7f;
 
     [Header("맥동 — 팽창과 수축")]
     [Tooltip("한 주기에 걸리는 초")]
@@ -70,6 +82,10 @@ public class ChaosBoss : MonoBehaviour
     Transform core;
     Material coreMat;
     Transform[] rings;
+    Light coreLight;
+    readonly System.Collections.Generic.List<Material> made = new System.Collections.Generic.List<Material>();
+    System.Collections.Generic.List<Material>[] ringMats;
+    Color[] ringBase;
 
     void Start()
     {
@@ -83,6 +99,13 @@ public class ChaosBoss : MonoBehaviour
             GameObject c = transform.GetChild(i).gameObject;
             if (Application.isPlaying) Destroy(c); else DestroyImmediate(c);
         }
+
+        foreach (Material m in made)
+        {
+            if (m == null) continue;
+            if (Application.isPlaying) Destroy(m); else DestroyImmediate(m);
+        }
+        made.Clear();
 
         float R = diameter * 0.5f;
 
@@ -98,11 +121,23 @@ public class ChaosBoss : MonoBehaviour
         coreMat.SetColor("_BaseColor", coreColor * 0.35f);
         coreMat.SetFloat("_Smoothness", 0.25f);
         coreMat.EnableKeyword("_EMISSION");
-        orb.GetComponent<Renderer>().sharedMaterial = coreMat;
+        Renderer orbR = orb.GetComponent<Renderer>();
+        orbR.sharedMaterial = coreMat;
+        orbR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         core = orb.transform;
+        made.Add(coreMat);
+
+        coreLight = new GameObject("CoreLight").AddComponent<Light>();
+        coreLight.transform.SetParent(transform, false);
+        coreLight.type = LightType.Point;
+        coreLight.color = coreColor;
+        coreLight.range = diameter * 2.6f;
+        coreLight.shadows = LightShadows.None;
 
         // ── 고리 ──
         rings = new Transform[ringCount];
+        ringMats = new System.Collections.Generic.List<Material>[ringCount];
+        ringBase = new Color[ringCount];
 
         for (int r = 0; r < ringCount; r++)
         {
@@ -115,6 +150,9 @@ public class ChaosBoss : MonoBehaviour
             float t = ringCount == 1 ? 1f : r / (float)(ringCount - 1);
             float radius = Mathf.Lerp(R * ringInner, R * ringOuter, t);
             rings[r] = ring.transform;
+            ringMats[r] = new System.Collections.Generic.List<Material>();
+            ringBase[r] = Color.Lerp(innerGlow, outerGlow, t) * ringGlow;
+            var glowCache = new System.Collections.Generic.Dictionary<Material, Material>();
 
             // 비울 칸을 고른다. 황금각으로 흩어야 겹마다 같은 쪽이 안 뚫린다
             var skip = new System.Collections.Generic.HashSet<int>();
@@ -137,6 +175,7 @@ public class ChaosBoss : MonoBehaviour
                 // 한 바퀴를 조각 수로 나눈 만큼이 조각 하나의 길이다
                 float arc = 2f * Mathf.PI * radius / segmentsPerRing;
                 FitLongest(piece, arc * 1.06f);          // 살짝 겹쳐 실틈을 없앤다
+                Glow(piece, r, glowCache);
             }
 
             // 세계 하나와 파편 몇 개를 고리에 박는다
@@ -145,7 +184,7 @@ public class ChaosBoss : MonoBehaviour
                 float wAng = Frac(r * 0.382f) * 360f;
                 Vector3 wAt = Quaternion.Euler(0f, wAng, 0f) * new Vector3(radius, 0f, 0f);
                 GameObject w = Spawn(worldSphere, ring.transform, wAt, Random.rotation);
-                if (w != null) FitLongest(w, R * Mathf.Lerp(0.30f, 0.20f, t));
+                if (w != null) { FitLongest(w, R * Mathf.Lerp(0.30f, 0.20f, t)); Glow(w, r, glowCache); }
             }
 
             if (rubble != null)
@@ -156,7 +195,7 @@ public class ChaosBoss : MonoBehaviour
                     float cRad = radius * Mathf.Lerp(0.88f, 1.12f, Frac(k * 0.37f));
                     Vector3 cAt = Quaternion.Euler(0f, cAng, 0f) * new Vector3(cRad, 0f, 0f);
                     GameObject chunk = Spawn(rubble, ring.transform, cAt, Random.rotation);
-                    if (chunk != null) FitLongest(chunk, R * 0.13f);
+                    if (chunk != null) { FitLongest(chunk, R * 0.13f); Glow(chunk, r, glowCache); }
                 }
             }
         }
@@ -199,6 +238,17 @@ public class ChaosBoss : MonoBehaviour
             coreMat.SetColor("_EmissionColor", e * Mathf.Lerp(emissionLow, emissionHigh, k));
         }
 
+        // 고리도 같이 숨쉰다 — 수축 때 식고 팽창 때 달아오른다
+        if (ringMats != null)
+            for (int r = 0; r < ringMats.Length; r++)
+            {
+                if (ringMats[r] == null) continue;
+                Color c = ringBase[r] * Mathf.Lerp(0.5f, 1.5f, k);
+                foreach (Material m in ringMats[r]) if (m != null) m.SetColor("emissiveFactor", c);
+            }
+
+        if (coreLight != null) coreLight.intensity = lightIntensity * Mathf.Lerp(0.35f, 1f, k);
+
         // 핵은 고리와 **반대로** 움직인다 — 고리가 좁혀들 때 눌려 부푸는 것처럼
         if (core != null)
             core.localScale = Vector3.one * (diameter * coreRatio * Mathf.Lerp(1.08f, 0.92f, k));
@@ -212,6 +262,42 @@ public class ChaosBoss : MonoBehaviour
         g.transform.localRotation = rot;
         Strip(g);
         return g;
+    }
+
+    /// <summary>
+    /// 부품에 그 겹의 발광 재질을 입힌다. 원본 재질마다 복제 하나를 겹 안에서 나눠 쓴다.
+    /// **블록이 아니라 재질 자체를 바꾼다** — glTFast 셰이더는 `emissiveFactor` 를
+    /// 프로퍼티 블록으로 안 받는다. 발광 텍스처가 비어 있으면 검정으로 곱해지므로 흰색을 채우고,
+    /// `_EMISSIVE` 키워드를 켠다.
+    /// 그림자도 끈다 — 떠 있는 고리 그림자가 바닥에 어지럽게 깔렸다
+    /// </summary>
+    void Glow(GameObject piece, int ring, System.Collections.Generic.Dictionary<Material, Material> cache)
+    {
+        foreach (Renderer rr in piece.GetComponentsInChildren<Renderer>(true))
+        {
+            rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Material src = rr.sharedMaterial;
+            if (src == null || !src.HasProperty("emissiveFactor")) continue;
+
+            Material m;
+            if (!cache.TryGetValue(src, out m))
+            {
+                m = new Material(src);
+                m.EnableKeyword("_EMISSIVE");   // 이게 없으면 glTF 셰이더가 발광을 통째로 건너뛴다 (MapDecor 와 같다)
+                if (m.HasProperty("emissiveTexture") && m.GetTexture("emissiveTexture") == null)
+                    m.SetTexture("emissiveTexture", Texture2D.whiteTexture);
+                m.SetColor("emissiveFactor", ringBase[ring]);
+                cache[src] = m;
+                ringMats[ring].Add(m);
+                made.Add(m);
+            }
+            rr.sharedMaterial = m;
+        }
+    }
+
+    void OnDestroy()
+    {
+        foreach (Material m in made) if (m != null) Destroy(m);
     }
 
     /// <summary>가장 긴 축을 `want` 에 맞춘다. 부품마다 원본 크기가 달라서 필요하다.</summary>

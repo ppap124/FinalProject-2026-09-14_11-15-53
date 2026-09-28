@@ -58,6 +58,7 @@ public class Monster : MonoBehaviour
 
     /// <summary>죽는 중. 명단에서는 이미 빠졌고 화면에만 남아 있다.</summary>
     bool dying;
+    public bool IsDying => dying;
 
     void Awake()
     {

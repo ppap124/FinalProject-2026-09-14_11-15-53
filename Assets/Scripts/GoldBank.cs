@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 돈. 영혼을 걸어서 확률적으로 얻고, 연구소에 쓴다.
@@ -21,13 +20,6 @@ public class GoldBank : MonoBehaviour
     void Awake()
     {
         Instance = this;
-    }
-
-    void Update()
-    {
-        // R — 영혼을 돈으로 (언제든 가능)
-        if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
-            Exchange();
     }
 
     public bool CanExchange()

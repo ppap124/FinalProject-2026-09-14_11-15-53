@@ -82,7 +82,7 @@ public class UnitControl : MonoBehaviour
 
     void ClickSelect(Vector2 screenPos, bool add)
     {
-        // 건물을 먼저 본다 — 클릭하면 창이 열린다
+        // 건물을 먼저 본다 — 클릭하면 건물이 선택된다
         Ray ray = cam.ScreenPointToRay(screenPos);
         RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
 
@@ -99,8 +99,9 @@ public class UnitControl : MonoBehaviour
             if (w != null && h.distance < wareD) { wareD = h.distance; ware = w; }
         }
 
-        if (lab != null && labD <= wareD) { lab.Toggle(); return; }
-        if (ware != null) { ware.Toggle(); return; }
+        // 건물은 유닛처럼 **선택**된다 — 명령은 HUD 콘솔이 띄운다 (GenesisHud.ShowLab / ShowWarehouse)
+        if (lab != null && labD <= wareD) { ClearSelection(); lab.open = true; return; }
+        if (ware != null) { ClearSelection(); ware.open = true; return; }
 
         if (!add) ClearSelection();
 
@@ -109,25 +110,6 @@ public class UnitControl : MonoBehaviour
 
         Unit hit = UnitUnderCursor(screenPos);
         if (hit != null) SelectUnit(hit);
-    }
-
-    ResearchBuilding LabUnderCursor(Vector2 screenPos)
-    {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
-        ResearchBuilding best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
-        {
-            ResearchBuilding p = h.collider.GetComponentInParent<ResearchBuilding>();
-            if (p == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = p; }
-        }
-
-        return best;
     }
 
     void BoxSelect(Vector2 a, Vector2 b, bool add)
@@ -206,6 +188,7 @@ public class UnitControl : MonoBehaviour
     {
         if (s == null || souls.Contains(s)) return;
 
+        CloseBuildings();
         souls.Add(s);
         s.SetSelected(true);
     }
@@ -214,12 +197,22 @@ public class UnitControl : MonoBehaviour
     {
         if (u == null || selected.Contains(u)) return;
 
+        CloseBuildings();
         selected.Add(u);
         u.SetSelected(true);
     }
 
+    /// <summary>건물 선택을 푼다. 유닛·영혼을 고르면 건물은 내려놓는다</summary>
+    void CloseBuildings()
+    {
+        if (ResearchBuilding.Instance != null) ResearchBuilding.Instance.open = false;
+        if (WarehouseBuilding.Instance != null) WarehouseBuilding.Instance.open = false;
+    }
+
     public void ClearSelection()
     {
+        CloseBuildings();
+
         foreach (Unit u in selected)
             if (u != null) u.SetSelected(false);
         selected.Clear();
@@ -248,6 +241,28 @@ public class UnitControl : MonoBehaviour
         // 전투 유닛은 겹치면 사거리가 낭비되므로 흔다
         for (int i = 0; i < selected.Count; i++)
             selected[i].MoveTo(dest + Offset(i, selected.Count, 2.6f));
+    }
+
+    /// <summary>
+    /// 고른 영혼을 그 일을 하는 패드로 보낸다 — 명령 칸 단축키용. 먹는 건 패드가
+    /// 한다(`TriggerBlock`). 바로 뽑아 주지 않고 **걸어가게** 두는 건, 패드 규칙을
+    /// 건너뛰면 영혼 블록이 장식이 되기 때문이다. 보낼 패드가 없으면 false
+    /// </summary>
+    public bool SendSoulsTo(TriggerBlock.Action action)
+    {
+        souls.RemoveAll(s => s == null);
+        if (souls.Count == 0) return false;
+
+        TriggerBlock pad = null;
+        foreach (TriggerBlock t in FindObjectsByType<TriggerBlock>(FindObjectsSortMode.None))
+            if (t.action == action && t.isActiveAndEnabled) { pad = t; break; }
+        if (pad == null) return false;
+
+        Vector3 dest = pad.transform.position;
+        dest.y = 0f;
+        foreach (SoulAvatar s in souls) s.MoveTo(dest);
+        ClearSelection();
+        return true;
     }
 
     Vector3 Offset(int i, int n, float gap)

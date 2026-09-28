@@ -34,7 +34,8 @@ public class UnitArt : MonoBehaviour
                  "중심이 손에 박혀 절반이 몸통을 뚫는다")]
         public Vector3 localPosition;
 
-        [Tooltip("glTFast는 프롭을 이미 세워서(긴 축 Y) 임포트한다. 보통 0으로 두면 된다")]
+        [Tooltip("glTFast는 프롭을 대개 세워서(긴 축 Y) 임포트한다. 보통 0으로 두면 된다. " +
+                 "단, 눕혀서(긴 축 X) 나온 것도 있다 — 타락한 인간의 검이 그래서 Z 90 으로 세운다")]
         public Vector3 localEuler = Vector3.zero;
 
         [Tooltip("각도를 손 본이 아니라 몸 기준으로 잡는다. 손 본은 T포즈에서 제멋대로 돌아가 있어서 이게 없으면 방패가 날 선다")]
@@ -186,6 +187,43 @@ public class UnitArt : MonoBehaviour
 
     [Tooltip("기준 자세에서 몇 초 지점을 쓸지")]
     public float equipPoseTime = 0f;
+
+    [Header("단계 오라")]
+    [Tooltip("필드의 3단계 유닛 발밑 오라 — 조합표 전시와 같은 것. " +
+             "에셋 스토어 팩(@Asset)이라 비어 있으면 그냥 안 붙는다")]
+    public GameObject tier3Aura;
+
+    [Tooltip("4단계 유닛 발밑 마법진")]
+    public GameObject tier4Aura;
+
+    [Tooltip("오라 크기 — 유닛 덩치에 곱한다. 덩치가 단계마다 달라서 절대값으로 두면 4단계만 작아 보인다")]
+    public float auraScale = 0.55f;
+
+    /// <summary>
+    /// 3·4단계 유닛 발밑에 오라를 붙인다. 자식이라 유닛이 움직이면 같이 가고, 죽거나 조합되면 같이 사라진다.
+    /// 돌려주는 값은 오라 반지름(월드). 선택 고리를 그 바깥에 그리려고 쓴다 — 0 이면 오라가 없다.
+    /// </summary>
+    public static float Aura(Transform unit, int tier, float size)
+    {
+        if (Instance == null || unit.Find("Aura") != null) return 0f;
+        GameObject prefab = tier == 3 ? Instance.tier3Aura : tier == 4 ? Instance.tier4Aura : null;
+        if (prefab == null) return 0f;
+
+        GameObject g = Instantiate(prefab, unit);
+        g.name = "Aura";
+        // 부모 실린더가 (size, size*0.45, size)로 납작하고 중심이 반높이에 있다 — 발바닥이 로컬 y=-1.
+        // 바닥에 딱 붙이면 땅에 묻혀 깜빡이므로 조금 띄운다
+        g.transform.localPosition = new Vector3(0f, -1f + 0.05f / (size * 0.45f), 0f);
+        g.transform.localRotation = prefab.transform.localRotation;
+        float k = Instance.auraScale;
+        g.transform.localScale = Vector3.Scale(prefab.transform.localScale, new Vector3(k, k / 0.45f, k));
+
+        // 가장 큰 파티클 = 바닥 문양. 그 절반이 반지름이다
+        float biggest = 0f;
+        foreach (ParticleSystem ps in g.GetComponentsInChildren<ParticleSystem>())
+            biggest = Mathf.Max(biggest, ps.main.startSize.constantMax * ps.transform.lossyScale.x);
+        return biggest * 0.5f;
+    }
 
     Dictionary<UnitType, Entry> map;
 

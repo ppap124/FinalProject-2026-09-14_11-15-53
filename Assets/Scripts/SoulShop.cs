@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 유닛 뽑기 · 생성 · 목록 관리.
@@ -47,10 +46,6 @@ public class SoulShop : MonoBehaviour
 
     void Update()
     {
-        // Q — 유닛 뽑기 (언제든 가능)
-        if (Keyboard.current != null && Keyboard.current.qKey.wasPressedThisFrame)
-            PullUnit();
-
         // 북유럽 중첩처럼 시간에 따라 변하는 것이 있어 가끔 다시 잰다
         if (Time.frameCount % 30 == 0) Recalc();
     }

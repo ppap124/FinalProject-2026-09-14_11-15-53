@@ -77,7 +77,7 @@ public class RouteArrows : MonoBehaviour
         route = GetComponent<PathRoute>();
         if (route == null || route.Count < 2) return;
 
-        if (mesh == null) mesh = BuildChevron();
+        if (mesh == null) mesh = Chevron(width, depth, thickness);
         if (mat == null)
         {
             Shader sh = Shader.Find("Universal Render Pipeline/Unlit");
@@ -155,8 +155,8 @@ public class RouteArrows : MonoBehaviour
         }
     }
 
-    /// <summary>앞(+Z)을 가리키는 납작한 ＞. 팔 두 개를 끝에서 맞붙인다.</summary>
-    Mesh BuildChevron()
+    /// <summary>앞(+Z)을 가리키는 납작한 ＞. 팔 두 개를 끝에서 맞붙인다. 영혼 통로(`LaneArrows`)도 같이 쓴다.</summary>
+    public static Mesh Chevron(float width, float depth, float thickness)
     {
         float hw = width * 0.5f, th = thickness;
         Vector3 tip = new Vector3(0f, 0f, depth * 0.5f);

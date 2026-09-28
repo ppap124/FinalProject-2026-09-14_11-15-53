@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 조합.
@@ -27,10 +26,6 @@ public class UnitCombiner : MonoBehaviour
 
     void Update()
     {
-        // E — 가능한 조합 하나 실행
-        if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-            CombineOnce();
-
         if (autoCombine)
         {
             int guard = 0;
@@ -63,7 +58,7 @@ public class UnitCombiner : MonoBehaviour
             SoulShop.Instance.Consume(found[1]);
             SoulShop.Instance.SpawnUnit(UnitTable.Tier4Of(c), at);
 
-            TotalCombined++;
+            Done(UnitTable.Tier4Of(c), at);
             return true;
         }
 
@@ -88,7 +83,7 @@ public class UnitCombiner : MonoBehaviour
             SoulShop.Instance.Consume(d);
             SoulShop.Instance.SpawnUnit(UnitTable.Tier3Of(c), at);
 
-            TotalCombined++;
+            Done(UnitTable.Tier3Of(c), at);
             return true;
         }
 
@@ -127,7 +122,7 @@ public class UnitCombiner : MonoBehaviour
         SoulShop.Instance.Consume(b);
         SoulShop.Instance.SpawnUnit(result, at);
 
-        TotalCombined++;
+        Done(result, at);
         return true;
     }
 
@@ -266,12 +261,55 @@ public class UnitCombiner : MonoBehaviour
         }
 
         SoulShop.Instance.SpawnUnit(o.result, at);
-        TotalCombined++;
+        Done(o.result, at);
         return true;
     }
 
+    /// <summary>
+    /// 조합이 끝났다. 조합표·필드 연출은 이 신호를 받아 번쩍인다 — 조합 경로가 넷(자동 3단 + 클릭)이라
+    /// 연출을 각자 부르면 하나쯤 빠진다.
+    /// </summary>
+    void Done(UnitType result, Vector3 at)
+    {
+        TotalCombined++;
+        if (Combined != null) Combined(result, at);
+    }
+
+    /// <summary>조합 결과와 나온 자리.</summary>
+    public static event System.Action<UnitType, Vector3> Combined;
+
+    /// <summary>
+    /// 이 유닛을 **지금** 만들 수 있는가. 조합표가 칸에 불을 켤 때 쓴다.
+    /// `OptionsFor` 와 같은 기준이다 — 창고에 든 유닛도 재료로 센다.
+    /// </summary>
+    public bool CanMake(UnitType result)
+    {
+        if (SoulShop.Instance == null) return false;
+        UnitTable.Stats s = UnitTable.Get(result);
+        Culture c = s.culture;
+
+        if (s.tier == 2)
+        {
+            if (MaterialBank.Instance == null || MaterialBank.Instance.Get(c) < 1) return false;
+            foreach (UnitType b in UnitTable.OfTier(1))
+            {
+                UnitType r;
+                if (UnitTable.TryCombine(b, c, out r) && r == result) return CountOf(b) >= 2;
+            }
+            return false;
+        }
+        if (s.tier == 3)
+        {
+            foreach (UnitType t in UnitTable.Tier2Of(c))
+                if (CountOf(t) < 1) return false;
+            return true;
+        }
+        if (s.tier == 4) return CountOf(UnitTable.Tier3Of(c)) >= 2;
+        return false;
+    }
+
     /// <summary>필드 + 창고. 창고에 있어도 재료로는 쓰인다.</summary>
-    int CountOf(UnitType t)
+    public int CountOf(UnitType t)
     {
         int n = 0;
         foreach (Unit x in SoulShop.Instance.Units)

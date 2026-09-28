@@ -85,6 +85,14 @@ public float lifeTime = 3f;
             return;
         }
 
+        // 날아가는 사이 표적이 쓰러졌으면 바로 옆의 산 몹으로 틀어 준다 —
+        // 시체에 맞으면 피해가 통째로 사라진다. 옆에 없으면 시체로 그냥 간다
+        if (target.IsDying && GameLoop.Instance != null)
+        {
+            Monster near = GameLoop.Instance.FindNearest(target.transform.position, 6f);
+            if (near != null) target = near;
+        }
+
         Vector3 dest = target.transform.position;
         Vector3 before = transform.position;
         Vector3 next = Vector3.MoveTowards(flat, dest, speed * Time.deltaTime);

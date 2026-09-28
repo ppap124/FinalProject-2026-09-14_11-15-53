@@ -20,6 +20,12 @@ public class Warehouse : MonoBehaviour
 
     public int TotalStored { get; private set; }
 
+    /// <summary>
+    /// 필드와 창고 사이를 오갈 수 있는가 — **정비 시간에만** (기획 §5). 라운드 중에 못 빼게
+    /// 해야 넣고 빼는 판단에 무게가 생긴다. 조합 재료로 쓰는 것(Remove)은 언제든 된다
+    /// </summary>
+    public bool CanMove => GameLoop.Instance == null || GameLoop.Instance.InPrep;
+
     void Awake()
     {
         Instance = this;
@@ -33,6 +39,7 @@ public class Warehouse : MonoBehaviour
     /// <summary>필드 유닛을 창고로 넣는다. 유닛은 사라진다.</summary>
     public bool Store(Unit u)
     {
+        if (!CanMove) return false;
         if (u == null || SoulShop.Instance == null) return false;
 
         Add(u.type, 1);
@@ -51,6 +58,7 @@ public class Warehouse : MonoBehaviour
     /// <summary>창고에서 하나 꺼낸다. 성공하면 필드에 나온다.</summary>
     public bool TakeOut(UnitType t, Vector3? at = null)
     {
+        if (!CanMove) return false;
         if (!Remove(t, 1)) return false;
         if (SoulShop.Instance == null) return false;
 

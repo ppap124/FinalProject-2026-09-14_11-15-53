@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 영혼으로 재료를 뽑는다.
@@ -34,13 +33,6 @@ public class MaterialShop : MonoBehaviour
     void Awake()
     {
         Instance = this;
-    }
-
-    void Update()
-    {
-        // W — 재료 뽑기 (개발용 단축키)
-        if (Keyboard.current != null && Keyboard.current.wKey.wasPressedThisFrame)
-            Pull();
     }
 
     public bool CanPull()

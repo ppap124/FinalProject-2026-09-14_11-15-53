@@ -48,6 +48,9 @@ public class Unit : MonoBehaviour
         }
         else if (r != null) r.material.color = s.color;
 
+        // 3·4단계는 조합표에서처럼 발밑에 오라가 돈다
+        auraRadius = UnitArt.Aura(transform, s.tier, size);
+
         // 쏘는 것도 종류마다 다르다 — 환웅은 구름을 던진다
         float psize;
         GameObject pp = UnitArt.ProjectileFor(t, out psize);
@@ -92,16 +95,10 @@ public class Unit : MonoBehaviour
 
         if (on && ring == null)
         {
-            GameObject g = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            g.name = "SelectRing";
-            Destroy(g.GetComponent<Collider>());
-
-            g.transform.SetParent(transform, false);
-            g.transform.localPosition = new Vector3(0f, -0.9f, 0f);
-            g.transform.localScale = new Vector3(1.6f, 0.04f, 1.6f);
-
-            Renderer rr = g.GetComponent<Renderer>();
-            if (rr != null) rr.material.color = new Color(0.3f, 1f, 0.4f);
+            // **꽉 찬 원반이 아니라 가는 고리로.** 전에는 밝은 초록 원반을 깔았는데,
+            // 3·4단계는 발밑에 금빛 오라가 돌아서 초록 면과 노란 빛이 겹쳐 눈이 아팠다.
+            // 고리를 오라 바깥에 그리면 둘이 겹치지 않는다
+            MakeRing(transform, Mathf.Max(transform.localScale.x * 0.62f, auraRadius + 0.3f));
         }
         else if (!on && ring != null)
         {
@@ -212,6 +209,55 @@ public class Unit : MonoBehaviour
 
     public bool IsMoving => moving;
     public bool IsSelected { get; private set; }
+
+    float auraRadius;   // 발밑 오라 반지름(월드). 없으면 0
+
+    /// <summary>
+    /// 발밑 선택 고리. 유닛과 영혼이 같이 쓴다.
+    /// `owner` 는 기본 도형(실린더·캡슐, 높이 2)을 x·z 같은 배율로 눌러 세운 것이어야 한다 — 발바닥이 로컬 y=-1.
+    /// </summary>
+    public static GameObject MakeRing(Transform owner, float worldRadius)
+    {
+        Vector3 s = owner.localScale;
+
+        GameObject g = new GameObject("SelectRing");
+        g.transform.SetParent(owner, false);
+        // 발바닥 바로 위. 부모가 y 로 납작해서 띄울 높이도 그만큼 나눈다
+        g.transform.localPosition = new Vector3(0f, -1f + 0.08f / s.y, 0f);
+        g.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        LineRenderer lr = g.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.alignment = LineAlignment.TransformZ;   // 바닥에 눕힌다
+        lr.widthMultiplier = 0.09f;
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.sharedMaterial = RingMaterial;
+        lr.startColor = lr.endColor = new Color(0.45f, 1f, 0.55f, 0.8f);
+
+        // 90° 눕혔으므로 로컬 x·y 가 바닥의 x·z 다 — 부모의 x 배율만 되돌리면 월드 반지름이 된다
+        const int n = 48;
+        float r = worldRadius / s.x;
+        lr.positionCount = n;
+        for (int i = 0; i < n; i++)
+        {
+            float a = i * Mathf.PI * 2f / n;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, 0f));
+        }
+        return g;
+    }
+
+    static Material ringMat;
+    /// <summary>선택 고리 재질. 유닛마다 새로 만들면 선택할 때마다 재질이 샌다</summary>
+    static Material RingMaterial
+    {
+        get
+        {
+            if (ringMat == null) ringMat = new Material(Shader.Find("Sprites/Default"));
+            return ringMat;
+        }
+    }
+
     public int Tier { get; private set; } = 1;
     public Culture Culture { get; private set; } = Culture.None;
 [Header("전투")]
@@ -277,7 +323,9 @@ public float range = 10f;
             return;
         }
 
-        if (target == null || !InRange(target))
+        // 죽는 중인 몹은 명단에서 빠졌지만 쓰러지는 2초 동안 남아 있다 —
+        // 그걸 계속 노리면 한 마리 잡을 때마다 2초씩 헛손질한다
+        if (target == null || target.IsDying || !InRange(target))
             target = FindTarget();
 
         if (target == null) return;
@@ -294,7 +342,11 @@ public float range = 10f;
     bool InRange(Monster m)
     {
         if (m == null) return false;
-        return (m.transform.position - transform.position).sqrMagnitude <= range * range;
+        // 바닥 위 거리로 잰다 — 떠 있는 카오스나 키 큰 보스는 몸 중심이 높아서, 3D 로 재면
+        // 근접 유닛이 바로 옆에 서 있어도 사거리 밖이 된다
+        Vector3 d = m.transform.position - transform.position;
+        d.y = 0f;
+        return d.sqrMagnitude <= range * range;
     }
 
     Monster FindTarget()

@@ -409,6 +409,8 @@ public class MapDecor : MonoBehaviour
     [Tooltip("전투장 성배 간격 배율. 1.5 면 18 간격 — 성배가 너무 많아 화면이 시끄러웠다")]
     public float battleChaliceMul = 1.5f;
 
+    [Tooltip("영혼 통로에 패드 쪽 화살표를 깐다 (LaneArrows)")]
+    public bool  laneArrows = true;
     [Tooltip("영혼 블록 담 높이(성벽 대비). 낮은 난간")]
     public float soulWallScale = 0.4f;
     [Tooltip("0 이면 성배 없음 — 모서리 화로만 남는다")]
@@ -420,8 +422,11 @@ public class MapDecor : MonoBehaviour
     public float recipeChaliceMul = 2f;
     public bool  recipeBanners = true;
 
-    [Tooltip("연구소는 성벽 대신 기단 위 기둥 회랑")]
-    public bool  labColonnade = true;
+    [Tooltip("연구소를 성벽 대신 기단 위 기둥 회랑으로. **껐다** — 블록마다 테두리 모양이 달라 " +
+             "한 섬 위의 방이 아니라 다른 게임에서 가져온 판처럼 보였다. 테두리는 성벽 한 벌, 높이로 등급")]
+    public bool  labColonnade = false;
+    [Tooltip("연구소 성벽 높이(성벽 대비). 조합표와 같게")]
+    public float labWallScale = 0.55f;
     [Tooltip("회랑 기둥 모델. 비우면 ruinPillar(폐허 기둥)를 쓴다 — 폐허 기둥은 뭉툭하고 짧아 회랑보다 터로 읽혔다")]
     public GameObject columnProp;
     public float colonnadeSpacing = 6.5f;
@@ -693,7 +698,32 @@ public class MapDecor : MonoBehaviour
     public GameObject researchProp;
 
     [Tooltip("연구소 돔 밑색에 곱할 색. 흰색이면 원래 색. 크림 대리석을 회청색으로 끌어내린다")]
-    public Color researchTint = new Color(0.62f, 0.66f, 0.80f, 1f);
+    public Color researchTint = new Color(0.46f, 0.50f, 0.68f, 1f);
+
+    [Header("다리 (블록 사이 수로)")]
+    [Tooltip("수로를 건너는 다리 (VARCO). 비우면 안 놓는다")]
+    public GameObject bridgeProp;
+    [Tooltip("다리 양 끝을 블록 안쪽으로 밀어 넣는 거리 — 틈만큼만 놓으면 끝이 허공에 뜬다")]
+    public float bridgeTuck = 0.8f;   // 성벽 두께가 0.6~0.8 이라 이만큼이면 다리 끝 기둥이 성벽 줄에 선다
+    [Tooltip("다리 바닥면 높이. 블록 윗면이 0")]
+    public float bridgeDeckY = 0.05f;
+    [Range(0f, 1f)]
+    [Tooltip("모델 키에서 바닥면이 있는 높이의 비율 (밑동 0 → 난간 꼭대기 1)")]
+    public float bridgeDeckRatio = 0.44f;   // Bridge.glb 를 재 보니 바닥면이 키의 0.130/0.295
+    [Tooltip("다리가 닿는 성벽 자리를 비워 문을 낸다. 끄면 다리가 성벽에 막힌다")]
+    public bool wallGates = true;
+    [Tooltip("문 폭 = 다리 폭 + 양쪽 이만큼. 작게 두어 성벽 끝이 다리 기둥에 붙게 한다")]
+    public float gateMargin = 0.1f;
+    [Tooltip("문 양옆에 따로 기둥을 세운다. 다리 모델에 모서리 기둥이 있으면 끈다 — 두 겹이 된다")]
+    public bool gatePosts = false;
+    [Tooltip("문 양옆 기둥 폭 상한 (망루 모델을 가늘게 세운다)")]
+    public float gatePostWidth = 2.2f;
+    [Tooltip("다리 폭 배율 (길이는 틈이 정하므로 폭만 따로 넓힌다)")]
+    public float bridgeWidthScale = 1.6f;
+    [Tooltip("두 블록이 이만큼은 마주 보고 있어야 다리를 놓는다")]
+    public float bridgeWidthMin = 8f;
+    [Tooltip("다리 돌 색 보정 — 원본은 베이지 석재라 남색 판 위에서 뜬다")]
+    public Color bridgeTint = new Color(0.55f, 0.60f, 0.78f, 1f);
 
     [Tooltip("창고 밑색에 곱할 색. 돔보다 약하게")]
     public Color warehouseTint = new Color(0.80f, 0.82f, 0.90f, 1f);
@@ -825,6 +855,7 @@ public class MapDecor : MonoBehaviour
         // 다시 지을 때마다 성배들이 제각기 다른 방향으로 돌아간다
         chaliceId = 0;
         bannerId = 0;
+        spots = null;   // 블록을 옮겼을 수 있다 — 다리 자리를 다시 잰다
 
         root = new GameObject("MapDecor").transform;
         root.SetParent(transform, false);
@@ -1949,6 +1980,24 @@ public class MapDecor : MonoBehaviour
                      new Vector3(0.22f, 0.03f, laneLen), "verge");
         }
 
+        // 통로마다 패드 쪽을 가리키는 화살표 — 빈 띠가 "영혼을 여기로 민다"는 길이 된다.
+        // 색은 패드 고리와 같다 (유닛 · 금화 · 재료)
+        if (laneArrows)
+        {
+            LaneArrows la = b.gameObject.AddComponent<LaneArrows>();
+            Color[] cols = { new Color(0.85f, 0.35f, 0.25f), new Color(0.95f, 0.78f, 0.25f), new Color(0.30f, 0.80f, 0.48f) };
+            for (int i = -1; i <= 1; i++)
+                la.lanes.Add(new LaneArrows.Lane {
+                    from = new Vector3(i * spread, 0f, spawnZ - 1.5f),
+                    to   = new Vector3(i * spread, 0f, padZ - 3.4f),
+                    color = cols[i + 1] });
+            la.Rebuild();
+
+            // 통로 입구 명판 — 패드가 무엇을 하는지, 영혼이 몇 개 쌓였는지
+            PadPlates pp = b.gameObject.AddComponent<PadPlates>();
+            pp.frontOffset = padZ - (spawnZ - 3f);
+        }
+
         // 패드 아래 받침. 패드 판정은 **반경 1.9 거리**라 받침을 키워도 판정은 그대로다 —
         // 보이는 것과 실제 범위가 어긋나지 않게 5.4 를 유지한다
         for (int i = -1; i <= 1; i++)
@@ -2365,7 +2414,13 @@ public class MapDecor : MonoBehaviour
 
         // 성벽 대신 **기둥 회랑** — 블록 넷이 같은 상자로 보이던 것을 깬다. 건물이 트여 보인다
         if (labColonnade && (columnProp != null || ruinPillar != null)) Colonnade(b, hx, hz);
-        else Rampart(b, hx, hz, wallHeight * 0.72f);
+        else
+        {
+            // 조합표와 같은 낮은 성벽 — 네 블록이 한 신전으로 읽히게 테두리는 한 벌, 높이로만 등급
+            chaliceMul = recipeChaliceMul; bannersOn = recipeBanners;
+            Rampart(b, hx, hz, wallHeight * labWallScale);
+            chaliceMul = 1f; bannersOn = true;
+        }
 
         // 건물 머리 위에 두면 조명이 건물 속에 파묻힌다 — **정면(카메라 쪽, -z)으로 빼서** 앞면을 비춘다
         FocusLight(b, "Research", new Vector3(-spread, 0f, -pad * 0.62f), new Color(0.70f, 0.80f, 1f), 6f, pad * 0.6f, 5f);
@@ -2416,8 +2471,10 @@ public class MapDecor : MonoBehaviour
         Rampart(b, hx, hz, wallHeight * recipeWallScale);
         chaliceMul = 1f; bannersOn = true;
 
-        // 전시장은 판 전체를 고르게 — 한 칸만 밝으면 그 유닛이 특별해 보인다
-        FocusLight(b, "Recipe", Vector3.zero, new Color(0.85f, 0.88f, 1f), 7f, Mathf.Min(hx, hz) * 0.95f);
+        // 전시장은 판 전체를 고르게 — 한 칸만 밝으면 그 유닛이 특별해 보인다.
+        // **높이 띄운다.** 기본 높이(3.6)로 두었더니 계보도 한가운데 선 요툰이 조명 바로 밑이라
+        // 하얗게 떴다. 12 로 올리고, 멀어진 만큼 세기를 올려 바닥 밝기를 맞춘다
+        FocusLight(b, "Recipe", Vector3.zero, new Color(0.85f, 0.88f, 1f), 40f, Mathf.Min(hx, hz) * 0.95f, 12f);
         DimRim(b);
     }
 
@@ -2562,49 +2619,114 @@ public class MapDecor : MonoBehaviour
             float wallDep = height * (seg.dep / seg.hgt);
             float fixedC = ((alongX ? halfZ : halfX) - wallDep * 0.5f) * outward;
 
-            // 1차 — 자기 높이에 맞는 자연 길이로 몇 토막인지 센다
-            List<float> heights = new List<float>();
-            float acc = 0f;
-            int guard = 0;
-            while (acc < half * 2f - 0.001f && guard++ < 200)
+            // 다리가 닿는 자리는 비워 문을 낸다.
+            // **문기둥은 기본으로 안 세운다** — 다리 모델에 모서리 기둥이 이미 있어서 기둥이 두 겹이 됐다.
+            // 틈을 다리 폭에 딱 맞추면 다리 기둥이 곧 문기둥이다
+            List<Vector2> gates = GatesOn(b, alongX, outward, alongX ? halfZ : halfX, half);
+            float postH = height + towerExtra * 0.5f;
+            float postW = gatePosts ? Mathf.Min(postH * (tow.len / tow.hgt), gatePostWidth) : 0f;
+            if (gatePosts) foreach (Vector2 gt in gates)
+                for (int e = -1; e <= 1; e += 2)
+                {
+                    float pu = gt.x + e * (gt.y + postW * 0.5f);
+                    Vector3 pat = alongX ? new Vector3(pu, 0f, fixedC) : new Vector3(fixedC, 0f, pu);
+                    WallPiece(b, "GatePost_" + id + "_" + (e > 0 ? "a" : "b"), wallTower, tow, pat, alongX, outward, postW, postH, 0f);
+                    id++;
+                }
+
+            // 문과 기둥을 뺀 나머지 구간마다 따로 채운다
+            List<Vector2> runs = new List<Vector2>();   // (시작, 끝)
+            float from = -half;
+            gates.Sort((p, q) => p.x.CompareTo(q.x));
+            foreach (Vector2 gt in gates)
             {
-                float z = alongX ? fixedC : -half + acc;
-                float h = height;
-                heights.Add(h);
-                acc += Mathf.Max(0.5f, h * ratio);
+                float lo = gt.x - gt.y - postW, hi = gt.x + gt.y + postW;
+                if (lo > from + 0.3f) runs.Add(new Vector2(from, lo));
+                from = Mathf.Max(from, hi);
             }
-            if (heights.Count == 0) continue;
+            if (half > from + 0.3f) runs.Add(new Vector2(from, half));
 
-            // 2차 — 자연 길이 합을 변 길이에 맞게 한 번만 보정하고 늘어놓는다
-            float natural = 0f;
-            for (int k = 0; k < heights.Count; k++) natural += heights[k] * ratio;
-            float fix = (half * 2f) / Mathf.Max(0.001f, natural);
-
-            float u = -half;
-            for (int k = 0; k < heights.Count; k++, id++)
+            foreach (Vector2 run in runs)
             {
-                float h = heights[k];
-                float len = h * ratio * fix;
+                float span = run.y - run.x;
 
-                // 무너진 그루터기. 기본은 꺼져 있다 — 켜면 '벽이 안 세워진 자리'로 읽힌다
-                if (Frac(id * 0.6180339f) < breachChance) h *= 0.34f;
+                // 1차 — 자기 높이에 맞는 자연 길이로 몇 토막인지 센다
+                List<float> heights = new List<float>();
+                float acc = 0f;
+                int guard = 0;
+                while (acc < span - 0.001f && guard++ < 200)
+                {
+                    heights.Add(height);
+                    acc += Mathf.Max(0.5f, height * ratio);
+                }
+                if (heights.Count == 0) continue;
 
-                // 프롭 끝면이 완벽히 평평하지 않아 딱 붙이면 실틈이 보인다 — 살짝 겹친다
-                Vector3 at = alongX
-                    ? new Vector3(u + len * 0.5f, 0f, fixedC)
-                    : new Vector3(fixedC, 0f, u + len * 0.5f);
+                // 2차 — 자연 길이 합을 구간 길이에 맞게 한 번만 보정하고 늘어놓는다
+                float natural = 0f;
+                for (int k = 0; k < heights.Count; k++) natural += heights[k] * ratio;
+                float fix = span / Mathf.Max(0.001f, natural);
 
-                WallPiece(b, "Wall_" + id, wallSegment, seg, at, alongX, outward,
-                          len * (1f + wallOverlap), h, 0f);
-                u += len;
+                float u = run.x;
+                for (int k = 0; k < heights.Count; k++, id++)
+                {
+                    float h = heights[k];
+                    float len = h * ratio * fix;
+
+                    // 무너진 그루터기. 기본은 꺼져 있다 — 켜면 '벽이 안 세워진 자리'로 읽힌다
+                    if (Frac(id * 0.6180339f) < breachChance) h *= 0.34f;
+
+                    // 프롭 끝면이 완벽히 평평하지 않아 딱 붙이면 실틈이 보인다 — 살짝 겹친다
+                    Vector3 at = alongX
+                        ? new Vector3(u + len * 0.5f, 0f, fixedC)
+                        : new Vector3(fixedC, 0f, u + len * 0.5f);
+
+                    WallPiece(b, "Wall_" + id, wallSegment, seg, at, alongX, outward,
+                              len * (1f + wallOverlap), h, 0f);
+                    u += len;
+                }
             }
+            // 성배 · 깃발이 문 위에 걸리지 않게 — 문 폭에 기둥까지 더해 넘겨 준다
+            sideGates.Clear();
+            foreach (Vector2 gt in gates) sideGates.Add(new Vector2(gt.x, gt.y + postW));
 
             // 성배는 토막마다가 아니라 **제 간격으로** 놓는다. 토막 길이는 변마다
             // 보정이 들어가서 제각각이라, 거기 맞추면 변마다 간격이 달라진다
             ChaliceRow(b, alongX, fixedC, half, height);
             BannerRow(b, alongX, outward, alongX ? halfZ : halfX, half, height);
         }
+        sideGates.Clear();
         return true;
+    }
+
+    /// <summary>지금 짓는 변의 문 자리 (가운데, 반폭+기둥). 성배 · 깃발이 여기를 피한다</summary>
+    readonly List<Vector2> sideGates = new List<Vector2>();
+
+    bool InGate(float u, float pad)
+    {
+        foreach (Vector2 g in sideGates) if (Mathf.Abs(u - g.x) < g.y + pad) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 블록 `b` 의 한 변에 닿는 다리를 찾아 문 자리를 돌려준다 — (변 위 위치, 문 반폭).
+    /// 다리 가운데가 변에서 수로 폭의 절반만큼 바깥에 있으면 이 변에 닿는 다리다.
+    /// </summary>
+    List<Vector2> GatesOn(Transform b, bool alongX, float outward, float edge, float half)
+    {
+        var list = new List<Vector2>();
+        if (!wallGates) return list;
+        foreach (BridgeSpot s in BridgeSpots())
+        {
+            // x 로 건너는 다리는 z 를 따라 뻗은 변(alongX=false)에 닿는다
+            if (s.crossX == alongX) continue;
+            Vector3 lp = b.InverseTransformPoint(s.at);
+            float across = alongX ? lp.z : lp.x;
+            float along = alongX ? lp.x : lp.z;
+            if (Mathf.Abs(across * outward - (edge + s.gap * 0.5f)) > 0.6f) continue;   // 다른 변 · 다른 블록
+            if (Mathf.Abs(along) > half) continue;
+            list.Add(new Vector2(along, s.width * 0.5f + gateMargin));
+        }
+        return list;
     }
 
     /// <summary>
@@ -2627,6 +2749,7 @@ public class MapDecor : MonoBehaviour
         for (int i = 0; i < n; i++)
         {
             float u = Mathf.Lerp(-half, half, (i + 0.5f) / n);
+            if (InGate(u, 1f)) continue;
 
             Vector3 at = alongX ? new Vector3(u, top, face) : new Vector3(face, top, u);
             float yaw = (alongX ? (outward > 0f ? 0f : 180f) : (outward > 0f ? 90f : 270f)) + bannerYaw;
@@ -2661,6 +2784,7 @@ public class MapDecor : MonoBehaviour
         {
             // 반 칸씩 안으로 — 끝에 놓으면 모서리 망루에 붙어 버린다
             float u = Mathf.Lerp(-half, half, (i + 0.5f) / n);
+            if (InGate(u, 1f)) continue;
 
             Vector3 at = alongX ? new Vector3(u, wallTop, fixedC)
                                 : new Vector3(fixedC, wallTop, u);
@@ -2689,7 +2813,9 @@ public class MapDecor : MonoBehaviour
     /// 다른 색 프리팹까지 같이 파래진다. 사본은 재질 이름으로 캐시해서
     /// 성배 54개가 두세 개를 나눠 쓴다 (배칭 유지).
     /// </summary>
-    void TintFlame(GameObject g, float dim)
+    void TintFlame(GameObject g, float dim) { TintFlame(g, dim, chaliceFire); }
+
+    void TintFlame(GameObject g, float dim, Color fireColor)
     {
         foreach (ParticleSystemRenderer r in g.GetComponentsInChildren<ParticleSystemRenderer>(true))
         {
@@ -2697,15 +2823,15 @@ public class MapDecor : MonoBehaviour
             if (src == null) continue;
 
             // 낮춘 불꽃은 재질을 따로 뜬다. 재질이 성배 전부에 공유라, 하나를
-            // 낮추면 먼 성배까지 같이 어두워진다
+            // 낮추면 먼 성배까지 같이 어두워진다. 색이 다른 불(조합표 화로)도 따로
             bool dimmed = dim < 0.999f;
-            string key = "flame_" + src.name + (dimmed ? "_near" : "");
+            string key = "flame_" + src.name + (dimmed ? "_near" : "") + (fireColor == chaliceFire ? "" : "_" + fireColor.GetHashCode());
             Material m;
             if (!mats.TryGetValue(key, out m))
             {
                 m = new Material(src);
                 m.name = "Decor_" + key;
-                if (m.HasProperty("_Color")) m.SetColor("_Color", chaliceFire);
+                if (m.HasProperty("_Color")) m.SetColor("_Color", fireColor);
                 if (m.HasProperty("_Emission")) m.SetFloat("_Emission", chaliceFlameEmission * dim);
                 mats[key] = m;
             }
@@ -2841,6 +2967,53 @@ public class MapDecor : MonoBehaviour
     /// 성배 하나와 그 위의 불. 키를 인자로 받는다 — 성벽 위(`chaliceHeight`)와
     /// 배치 구역 모서리(`cornerBowlHeight`)가 같은 물건을 다른 크기로 쓴다.
     /// </summary>
+    /// <summary>
+    /// 성배 불꽃과 같은 불(다듬기 · 불티 줄이기 · 깜박이는 빛)을 색만 바꿔 세운다.
+    /// 조합표 그리스 화로가 쓴다 — 불꽃 손질을 두 군데서 따로 하면 한쪽만 불티가 만 개가 된다.
+    /// </summary>
+    public GameObject Flame(Transform parent, Vector3 localPos, float scale, Color fireColor, float lightIntensity, float lightRange, int seed)
+    {
+        if (chaliceFlame == null) return null;
+        GameObject fire = Instantiate(chaliceFlame, parent);
+        fire.transform.localPosition = localPos;
+        fire.transform.localRotation = Quaternion.identity;
+        fire.transform.localScale = Vector3.one * Mathf.Max(0.01f, scale);
+        StripColliders(fire);
+
+        if (chaliceFlameTrim) TrimFlame(fire);
+        CompactFlame(fire, chaliceFlameCompact);
+        BlazeFlame(fire, chaliceFlameBlaze);
+        TintFlame(fire, 1f, fireColor);
+        // 플레이 중에 만들면 파티클이 이미 돌고 있어 시드를 못 바꾼다 — 멈추고 비운 뒤 넣고 다시 켠다
+        ParticleSystem[] systems = fire.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (ParticleSystem ps in systems)
+        {
+            ps.Stop(false, ParticleSystemStopBehavior.StopEmittingAndClear);
+            ParticleSystem.MainModule main = ps.main;
+            main.startDelay = 0f;
+            ps.useAutoRandomSeed = false;
+            ps.randomSeed = (uint)(seed * 7919 + 13);
+        }
+        foreach (ParticleSystem ps in systems) ps.Play(false);
+
+        if (lightIntensity > 0f)
+        {
+            Light l = fire.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = fireColor;
+            l.intensity = lightIntensity;
+            l.range = lightRange;
+            l.shadows = LightShadows.None;
+            DecorPulse p = fire.AddComponent<DecorPulse>();
+            p.target = l;
+            p.baseIntensity = l.intensity;
+            p.amount = 0.22f;
+            p.speed = 1.6f;
+            p.phase = seed * 1.31f;
+        }
+        return fire;
+    }
+
     void Chalice(Transform parent, Vector3 at, int i, float height)
     {
         GameObject bowl = Prop(parent, "Chalice_" + i, wallChalice, at,
@@ -3257,6 +3430,7 @@ public class MapDecor : MonoBehaviour
         }
 
         Walkways(f);
+        Bridges(f);
 
         GameObject rockSrc = foundationRock != null ? foundationRock : floatingIsle;
         if (rockSrc == null) return;
@@ -3284,6 +3458,108 @@ public class MapDecor : MonoBehaviour
     /// 나 있으면 "방과 방 사이의 회랑"으로 읽힌다. 보조 블록 바닥과 같은 남색 대리석에
     /// 금 연석 — 금빛으로 **빛나는** 길은 적의 경로 몫이라 여기선 발광을 안 쓴다.
     /// </summary>
+    /// <summary>
+    /// 블록 사이 별빛 수로마다 **다리 하나**를 가운데에 놓는다. 틈을 블록 배치에서 찾으므로 블록을 옮겨도 따라온다.
+    ///
+    /// 수로만 있으면 네 블록이 따로 떠 있는 판처럼 보였고, 틈은 길이 아니라 도랑으로 읽혔다.
+    /// 다리가 건너가면 "한 신전의 네 방"이 된다. 다리 끝은 블록 안쪽으로 조금 밀어 넣는다 —
+    /// 틈만큼만 놓으면 끝이 허공에 뜬다.
+    /// </summary>
+    /// <summary>다리 한 자리. 성벽은 이걸 보고 문을 낸다.</summary>
+    struct BridgeSpot
+    {
+        public Vector3 at;       // 수로 한가운데 (월드, y=0)
+        public bool crossX;      // x 방향으로 건넌다
+        public float gap;        // 수로 폭
+        public float width;      // 다리 폭 (월드)
+    }
+
+    /// <summary>
+    /// 다리 놓을 자리를 블록 배치에서 찾는다. 다리(`Bridges`)와 성벽 문(`RampartProps`)이 같은 목록을 써야
+    /// 문과 다리가 어긋나지 않는다.
+    /// </summary>
+    List<BridgeSpot> BridgeSpots()
+    {
+        // 성벽 변마다 묻는다 — 다리 모델을 매번 재지 않게 한 번 짓는 동안은 캐시
+        if (spots != null) return spots;
+        spots = new List<BridgeSpot>();
+        if (bridgeProp == null) return spots;
+        PropSize ps = Measure(bridgeProp);
+        if (!ps.ok) return spots;
+
+        // **전투 블록은 잇지 않는다.** 적이 도는 경기장에 문이 나 있으면 "저리로 나올 수 있나?"
+        // 하는 의문이 남는다 — 경기장은 닫힌 성벽이어야 한다. 유닛은 영혼 블록 소환문으로 들어간다
+        List<Bounds> bs = new List<Bounds>();
+        foreach (string n in new string[] { "Block_Soul", "Block_Recipe", "Block_Lab" })
+        {
+            GameObject blk = GameObject.Find(n);
+            Renderer r = blk != null ? blk.GetComponent<Renderer>() : null;
+            if (r != null) bs.Add(r.bounds);
+        }
+
+        for (int i = 0; i < bs.Count; i++)
+            for (int j = i + 1; j < bs.Count; j++)
+            {
+                Bounds a = bs[i], b = bs[j];
+                for (int axis = 0; axis < 2; axis++)
+                {
+                    // axis 0: 두 블록이 x 로 떨어져 있고 z 로 겹친다 → 다리가 x 로 건넌다
+                    float aMin = axis == 0 ? a.min.x : a.min.z, aMax = axis == 0 ? a.max.x : a.max.z;
+                    float bMin = axis == 0 ? b.min.x : b.min.z, bMax = axis == 0 ? b.max.x : b.max.z;
+                    if (!(aMax <= bMin || bMax <= aMin)) continue;
+                    float gapLo = Mathf.Min(aMax, bMax), gapHi = Mathf.Max(aMin, bMin);
+                    float gap = gapHi - gapLo;
+                    if (gap < 1.5f || gap > 20f) continue;
+
+                    float oMin = axis == 0 ? Mathf.Max(a.min.z, b.min.z) : Mathf.Max(a.min.x, b.min.x);
+                    float oMax = axis == 0 ? Mathf.Min(a.max.z, b.max.z) : Mathf.Min(a.max.x, b.max.x);
+                    if (oMax - oMin < bridgeWidthMin) continue;
+
+                    float mid = (gapLo + gapHi) * 0.5f, c = (oMin + oMax) * 0.5f;
+                    BridgeSpot s = new BridgeSpot();
+                    s.at = axis == 0 ? new Vector3(mid, 0f, c) : new Vector3(c, 0f, mid);
+                    s.crossX = axis == 0;
+                    s.gap = gap;
+                    s.width = (gap + bridgeTuck * 2f) * (ps.dep / ps.len) * bridgeWidthScale;
+                    spots.Add(s);
+                }
+            }
+        return spots;
+    }
+
+
+    List<BridgeSpot> spots;   // Build 마다 비운다
+
+    void Bridges(Transform f)
+    {
+        if (bridgeProp == null) return;
+        PropSize ps = Measure(bridgeProp);
+        if (!ps.ok) return;
+
+        int id = 0;
+        foreach (BridgeSpot sp in BridgeSpots())
+        {
+            Vector3 lp = f.InverseTransformPoint(sp.at);
+
+            // 긴 축을 건너는 방향으로. 모델 긴 축이 z 면 x 로 건널 때 90° 돌린다
+            float yaw = (sp.crossX == ps.lenIsZ) ? 90f : 0f;
+
+            float len = sp.gap + bridgeTuck * 2f;
+            float h = len * ps.hgt / ps.len;
+            // 바닥면이 블록 윗면(0)에 오게 밑동을 내린다
+            lp.y = bridgeDeckY - h * bridgeDeckRatio;
+
+            GameObject g = Prop(f, "Bridge_" + id++, bridgeProp, lp, Quaternion.Euler(0f, yaw, 0f), len, FitAxis.Longest);
+            if (g == null) continue;
+            // 폭만 넓힌다 — 길이는 틈이 정하는데, 원래 비율(폭 = 길이 × 0.47)로는
+            // 60 짜리 블록 사이에서 실처럼 가늘어 보였다
+            Vector3 s = g.transform.localScale;
+            if (ps.lenIsZ) s.x *= bridgeWidthScale; else s.z *= bridgeWidthScale;
+            g.transform.localScale = s;
+            if (bridgeTint != Color.white) TintProp(g, bridgeTint);
+        }
+    }
+
     void Walkways(Transform f)
     {
         if (!walkways) return;

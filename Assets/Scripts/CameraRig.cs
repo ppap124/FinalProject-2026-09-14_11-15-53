@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 /// 워크3식 카메라. 맵 전체를 한 화면에 안 담는다 — 전투 블록을 크게 보고,
 /// 영혼 블록·조합표 블록은 화면 밖에 두고 필요할 때 옮겨간다.
 ///
-///   WASD / 방향키   화면 이동
+///   방향키          화면 이동 (QWER/ASDF 는 명령 칸 단축키라 안 쓴다)
 ///   화면 가장자리    이동 (끌 수 있음)
 ///   F1~F4           전투 / 영혼 / 조합표 / 연구소로 바로 이동
 /// </summary>
@@ -17,6 +17,9 @@ public class CameraRig : MonoBehaviour
     public float pitch = 42f;
     [Tooltip("주시점 위 높이. 작을수록 확대")]
     public float height = 12.5f;
+
+    [Tooltip("시선을 앞으로 내리는 거리(바닥 단위). HUD 가 화면 아래를 더 많이 가리는 만큼 보정한다")]
+    public float hudShift = 5.5f;
 
     [Header("이동")]
     public float panSpeed = 30f;
@@ -78,10 +81,10 @@ public class CameraRig : MonoBehaviour
             if (k.f3Key.wasPressedThisFrame) { target = recipePoint; return; }
             if (k.f4Key.wasPressedThisFrame) { target = labPoint; return; }
 
-            if (k.aKey.isPressed || k.leftArrowKey.isPressed) dir.x -= 1f;
-            if (k.dKey.isPressed || k.rightArrowKey.isPressed) dir.x += 1f;
-            if (k.sKey.isPressed || k.downArrowKey.isPressed) dir.y -= 1f;
-            if (k.wKey.isPressed || k.upArrowKey.isPressed) dir.y += 1f;
+            if (k.leftArrowKey.isPressed) dir.x -= 1f;
+            if (k.rightArrowKey.isPressed) dir.x += 1f;
+            if (k.downArrowKey.isPressed) dir.y -= 1f;
+            if (k.upArrowKey.isPressed) dir.y += 1f;
         }
 
         if (edgeScroll && Mouse.current != null)
@@ -128,7 +131,10 @@ public class CameraRig : MonoBehaviour
 
         float horiz = height / Mathf.Tan(pitch * Mathf.Deg2Rad);
 
-        cam.transform.position = new Vector3(look.x, height, look.y - horiz);
+        // HUD 는 아래 콘솔(180)이 위 띠(46)보다 두꺼워서, 화면 한가운데가 곧 보이는 칸의
+        // 한가운데가 아니다. 시선을 hudShift 만큼 앞(-z)으로 내려서, 주시점이 **HUD 사이
+        // 보이는 칸의 가운데**에 오게 한다. 안 그러면 전투장 아래 길이 콘솔 밑에 깔린다
+        cam.transform.position = new Vector3(look.x, height, look.y - hudShift - horiz);
         cam.transform.rotation = Quaternion.Euler(pitch, 0f, 0f);
     }
 
