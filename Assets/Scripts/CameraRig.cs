@@ -71,6 +71,7 @@ public class CameraRig : MonoBehaviour
 
     void HandleInput()
     {
+        if (GenesisHud.Paused) return;   // 메뉴를 누르러 가다 화면 가장자리에 닿아도 안 밀린다
         Keyboard k = Keyboard.current;
         Vector2 dir = Vector2.zero;
 
@@ -134,8 +135,36 @@ public class CameraRig : MonoBehaviour
         // HUD 는 아래 콘솔(180)이 위 띠(46)보다 두꺼워서, 화면 한가운데가 곧 보이는 칸의
         // 한가운데가 아니다. 시선을 hudShift 만큼 앞(-z)으로 내려서, 주시점이 **HUD 사이
         // 보이는 칸의 가운데**에 오게 한다. 안 그러면 전투장 아래 길이 콘솔 밑에 깔린다
-        cam.transform.position = new Vector3(look.x, height, look.y - hudShift - horiz);
+        cam.transform.position = new Vector3(look.x, height, look.y - hudShift - horiz) + ShakeOffset();
         cam.transform.rotation = Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    // ── 흔들림 ──
+    float shakeAmp, shakeStart, shakeUntil;
+
+    /// <summary>
+    /// 화면을 흔든다. 이미 흔들리는 중이면 더 센 쪽을 남긴다. 배속과 상관없이 같은 길이로 흔든다
+    /// </summary>
+    public void Shake(float amplitude, float duration)
+    {
+        float now = Time.unscaledTime;
+        float left = now < shakeUntil ? shakeAmp * (shakeUntil - now) / Mathf.Max(0.01f, shakeUntil - shakeStart) : 0f;
+        if (amplitude < left) return;
+        shakeAmp = amplitude;
+        shakeStart = now;
+        shakeUntil = now + Mathf.Max(0.01f, duration);
+    }
+
+    Vector3 ShakeOffset()
+    {
+        float now = Time.unscaledTime;
+        if (now >= shakeUntil) return Vector3.zero;
+
+        // 무작위로 튀면 떨림이 아니라 깜빡임이 된다 — 펄린으로 이어지게 흔들고, 끝으로 갈수록 잦아든다
+        float k = (shakeUntil - now) / Mathf.Max(0.01f, shakeUntil - shakeStart);
+        float f = now * 28f;
+        return new Vector3(Mathf.PerlinNoise(f, 0.3f) - 0.5f, Mathf.PerlinNoise(0.7f, f) - 0.5f, Mathf.PerlinNoise(f, f * 0.5f) - 0.5f)
+               * (2f * shakeAmp * k * k);
     }
 
     /// <summary>다른 코드에서 특정 지점으로 보낼 때.</summary>

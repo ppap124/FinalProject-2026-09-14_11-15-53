@@ -1246,8 +1246,28 @@ public class MapDecor : MonoBehaviour
         Vector3 spawn = new Vector3(-roadMid, 0f, -roadMid);
         GameObject wp = GameObject.Find("WP_0_Spawn");
         if (wp != null) spawn = b.InverseTransformPoint(wp.transform.position);
-        Cylinder(b, "SpawnMark",     new Vector3(spawn.x, 0.16f, spawn.z), roadWidth * 0.85f, 0.04f, "accentDim");
-        Cylinder(b, "SpawnMarkHole", new Vector3(spawn.x, 0.17f, spawn.z), roadWidth * 0.65f, 0.04f, "road");
+        // **차원의 균열.** 옅은 초록 고리였는데, 초록은 선택 고리 색("내 것")이라 적이 나오는 자리와
+        // 헷갈렸고 길을 넓히며 고리도 커져 모서리 화로까지 넘었다. 이제 길 폭 안에 들어가는
+        // 진홍빛 틈 — 카오스 색이고, 몹은 이 틈 아래에서 솟아오른다 (`SpawnRift`, `Monster.Emerge`)
+        if (riftTexture != null)
+        {
+            GameObject rg = new GameObject("SpawnRift");
+            rg.transform.SetParent(b, false);
+            rg.transform.localPosition = new Vector3(spawn.x, 0.2f, spawn.z);
+            SpawnRift rift = rg.AddComponent<SpawnRift>();
+            rift.texture = riftTexture;
+            rift.size = roadWidth * riftFill;
+            rift.Rebuild();
+
+            // 균열 위 화살표는 뺀다
+            RouteArrows ra = UnityEngine.Object.FindFirstObjectByType<RouteArrows>();
+            if (ra != null) { ra.spawnClear = rift.size * 0.5f + 0.4f; ra.Rebuild(); }
+        }
+        else
+        {
+            Cylinder(b, "SpawnMark",     new Vector3(spawn.x, 0.16f, spawn.z), roadWidth * 0.85f, 0.04f, "accentDim");
+            Cylinder(b, "SpawnMarkHole", new Vector3(spawn.x, 0.17f, spawn.z), roadWidth * 0.65f, 0.04f, "road");
+        }
 
         // 폐허 기둥은 성벽이 원시 도형일 때만. 프롭 성벽은 테두리 단(13~15)을
         // 통째로 차지해서, 기둥을 세우면 벽 속에 파묻힌다
@@ -1964,10 +1984,14 @@ public class MapDecor : MonoBehaviour
         SoulBank bank = UnityEngine.Object.FindFirstObjectByType<SoulBank>();
         if (bank != null) spawnZ = b.InverseTransformPoint(bank.spawnCenter).z;
 
-        // 패드로 이어지는 통로 — 영혼을 어디로 밀어야 하는지 보이게.
-        // 바닥(ground)과 값이 비슷하면 안 보인다. 길(road) 쪽으로 살짝 섞어 띄운다
-        float laneLen = padZ - spawnZ + 5f;
-        float laneZ = (padZ + spawnZ) * 0.5f;
+        // 통로는 **영혼 샘 뒤에서** 시작한다 — 샘에서 생긴 영혼을 셋 중 하나로 보낸다.
+        // 전에는 통로가 생성 자리까지 내려와서 가운데(금화) 통로 위에서 영혼이 생겼고,
+        // 금화로만 보내야 하는 것처럼 읽혔다
+        float ring = bank != null ? bank.spawnSpread : 4f;
+        float laneStart = spawnZ + ring + 0.8f;
+        float laneEnd = padZ + 2.5f;
+        float laneLen = laneEnd - laneStart;
+        float laneZ = (laneStart + laneEnd) * 0.5f;
         for (int i = -1; i <= 1; i++)
         {
             float x = i * spread;
@@ -1988,14 +2012,15 @@ public class MapDecor : MonoBehaviour
             Color[] cols = { new Color(0.85f, 0.35f, 0.25f), new Color(0.95f, 0.78f, 0.25f), new Color(0.30f, 0.80f, 0.48f) };
             for (int i = -1; i <= 1; i++)
                 la.lanes.Add(new LaneArrows.Lane {
-                    from = new Vector3(i * spread, 0f, spawnZ - 1.5f),
+                    from = new Vector3(i * spread, 0f, laneStart + 1.6f),
                     to   = new Vector3(i * spread, 0f, padZ - 3.4f),
                     color = cols[i + 1] });
             la.Rebuild();
 
             // 통로 입구 명판 — 패드가 무엇을 하는지, 영혼이 몇 개 쌓였는지
             PadPlates pp = b.gameObject.AddComponent<PadPlates>();
-            pp.frontOffset = padZ - (spawnZ - 3f);
+            // 통로 입구에서 조금 안쪽 — 입구에 딱 붙이면 가운데(금화) 명판이 샘 위에 얹혀 보였다
+            pp.frontOffset = padZ - laneStart - padPlateInset;
         }
 
         // 패드 아래 받침. 패드 판정은 **반경 1.9 거리**라 받침을 키워도 판정은 그대로다 —
@@ -2004,12 +2029,22 @@ public class MapDecor : MonoBehaviour
             Slab(b, "PadBase_" + (i + 1), new Vector3(i * spread, 0.04f, padZ),
                  new Vector3(5.4f, 0.06f, 5.4f), "trim");
 
-        // 유닛 패드 위의 소환문 — 영혼이 이 안으로 들어가 사라진다
+        // 유닛 패드 뒤의 소환문 — 영혼이 이 안으로 들어가 사라진다.
+        // **금고·제단과 같은 줄에 세운다.** 전에는 문만 패드 한복판에 서서 셋 중 문 하나가
+        // 앞으로 튀어나와 보였다. 앞면을 제단과 같은 선(패드 + shrineOffset)에 맞춘다
+        float gateZ = padZ;
         if (unitGate != null)
         {
-            Prop(b, "UnitGate", unitGate, new Vector3(-spread, 0.07f, padZ),
-                 Quaternion.Euler(0f, gateYaw, 0f), gateHeight, FitAxis.Height);
-            GateGlow(b, new Vector3(-spread, 0f, padZ));
+            GameObject gate = Prop(b, "UnitGate", unitGate, new Vector3(-spread, 0.07f, padZ),
+                                   Quaternion.Euler(0f, gateYaw, 0f), gateHeight, FitAxis.Height);
+            Bounds gb;
+            if (gate != null && TryWorldBounds(gate, out gb))
+            {
+                float push = b.TransformPoint(new Vector3(0f, 0f, padZ)).z + shrineOffset - gb.min.z;
+                gate.transform.position += new Vector3(0f, 0f, push);
+                gateZ = padZ + push;
+            }
+            GateGlow(b, new Vector3(-spread, 0f, gateZ));
         }
 
         // 유닛 패드에도 바닥 고리. 셋이 같은 언어여야 "이 줄이 패드"로 읽힌다
@@ -2023,10 +2058,13 @@ public class MapDecor : MonoBehaviour
         PadMarker(b, "Material", new Vector3(spread, 0f, padZ),
                   new Color(0.30f, 0.80f, 0.48f), MarkerKind.Shard, materialShrine);
 
-        // 영혼 생성 자리. 여기는 **표식일 뿐**이라 클 이유가 없다 — 크면 통로보다
-        // 눈에 띄어서 저기가 목적지인 줄 읽힌다
-        Cylinder(b, "SpawnMark",     new Vector3(0f, 0.05f, spawnZ), spawnMarkSize, 0.04f, "accentDim");
-        Cylinder(b, "SpawnMarkHole", new Vector3(0f, 0.06f, spawnZ), spawnMarkSize * 0.72f, 0.04f, "inner");
+        // 영혼 샘 — 영혼이 여기서 솟는다. 영혼은 샘 **둘레 고리**에서 생긴다 (SoulBank.spawnInner)
+        if (soulWell != null) SoulWell(b, new Vector3(0f, 0f, spawnZ));
+        else
+        {
+            Cylinder(b, "SpawnMark",     new Vector3(0f, 0.05f, spawnZ), spawnMarkSize, 0.04f, "accentDim");
+            Cylinder(b, "SpawnMarkHole", new Vector3(0f, 0.06f, spawnZ), spawnMarkSize * 0.72f, 0.04f, "inner");
+        }
 
         HidePadCubes();
 
@@ -2039,10 +2077,44 @@ public class MapDecor : MonoBehaviour
         chaliceMul = 1f; bannersOn = true;
 
         // 빛은 패드 셋에 — 영혼을 어디로 밀지가 이 블록의 전부다
-        FocusLight(b, "Gate", new Vector3(-spread, 0f, padZ), new Color(0.55f, 0.85f, 1f), 9f, 3.2f);
+        FocusLight(b, "Gate", new Vector3(-spread, 0f, (padZ + gateZ) * 0.5f), new Color(0.55f, 0.85f, 1f), 9f, 3.2f);
         FocusLight(b, "Gold", new Vector3(0f, 0f, padZ + shrineOffset * 0.5f), new Color(1f, 0.80f, 0.45f), 11f, 3.4f);
         FocusLight(b, "Material", new Vector3(spread, 0f, padZ + shrineOffset * 0.5f), new Color(0.55f, 1f, 0.70f), 9f, 3.4f);
         DimRim(b);
+    }
+
+    [Header("몹 출발점 — 차원의 균열")]
+    [Tooltip("검은 바탕에 빛나는 틈 그림 (밝기가 곧 빛). 비우면 예전 고리 표식")]
+    public Texture2D riftTexture;
+    [Tooltip("균열 지름 = 길 폭 × 이 값. 1 을 넘으면 길 턱을 넘어간다")]
+    public float riftFill = 0.8f;
+
+    [Header("영혼 샘")]
+    [Tooltip("영혼 블록 앞 가운데 샘 (VARCO). 비우면 예전 바닥 표식")]
+    public GameObject soulWell;
+    [Tooltip("샘 지름 — 영혼 생성 고리 안쪽(SoulBank.spawnInner × 2)보다 조금 작게")]
+    public float soulWellDiameter = 4.6f;
+    [Tooltip("샘에서 피어오르는 불꽃 색 — 영혼 구슬과 같은 초록")]
+    public Color soulWellFire = new Color(0.35f, 1f, 0.5f, 1f);
+    public float soulWellFireScale = 3.2f;
+    [Tooltip("통로 명판을 통로 입구에서 패드 쪽으로 이만큼 들인다 — 샘과 겹치지 않게")]
+    public float padPlateInset = 3.5f;
+    [Tooltip("패드 바닥에 마법진 문양(PadSigil)을 깐다. 끄면 예전 발광 고리")]
+    public bool padSigils = true;
+    [Tooltip("문양 지름 — 받침(5.4)보다 조금 크게")]
+    public float padSigilSize = 5.8f;
+
+    void SoulWell(Transform b, Vector3 at)
+    {
+        GameObject g = Prop(b, "SoulWell", soulWell, at + new Vector3(0f, 0.05f, 0f), Quaternion.Euler(0f, 180f, 0f),
+                            soulWellDiameter, FitAxis.Longest);
+        Bounds bb;
+        float top = 1f;
+        if (g != null && TryWorldBounds(g, out bb)) top = bb.max.y - b.position.y;
+
+        // 샘 안에서 영혼 불꽃이 솟는다 — 성배 불꽃과 같은 손질(Flame), 색만 영혼 초록
+        GameObject f = Flame(b, at + new Vector3(0f, top * 0.7f, 0f), soulWellFireScale, soulWellFire, 2.2f, 7f, 777);
+        if (f != null) f.name = "SoulWellFire";
     }
 
     /// <summary>
@@ -2093,9 +2165,11 @@ public class MapDecor : MonoBehaviour
         Material glow = MakeGlow("pad_" + tag, col, 0.8f);
         Material post = Get("trim");
 
-        // 귀퉁이 기둥 넷 — 패드 반경 1.9 밖에 둔다
+        // 귀퉁이 기둥 넷 — 패드 반경 1.9 밖에 둔다.
+        // 제단 + 문양이 있으면 뺀다 — 문 패드엔 기둥이 없어서 셋이 서로 달라 보였다
         float e = 2.35f;
-        for (int sx = -1; sx <= 1; sx += 2)
+        bool posts = !(padSigils && shrine != null);
+        for (int sx = -1; sx <= 1 && posts; sx += 2)
             for (int sz = -1; sz <= 1; sz += 2)
             {
                 GameObject p = Slab(b, "PadPost_" + tag + "_" + sx + sz,
@@ -2223,6 +2297,24 @@ public class MapDecor : MonoBehaviour
     /// </summary>
     void PadFloor(Transform b, string tag, Vector3 at, Color col)
     {
+        // **마법진 문양으로 바꿨다.** 고리 셋이 똑같아서 셋 다 같은 패드처럼 읽혔다 —
+        // 이제 가운데 문장이 패드마다 다르고, 안쪽 실선이 판정 반경을 그대로 보여 준다
+        if (padSigils)
+        {
+            GameObject g = new GameObject("PadSigil_" + tag);
+            g.transform.SetParent(b, false);
+            g.transform.localPosition = at + new Vector3(0f, 0.075f, 0f);   // 받침(0.07) 바로 위
+
+            PadSigil s = g.AddComponent<PadSigil>();
+            s.kind = tag == "Unit" ? PadSigil.Kind.Summon : tag == "Gold" ? PadSigil.Kind.Coin : PadSigil.Kind.Crystal;
+            s.color = col;
+            s.size = padSigilSize;
+            GameObject p = GameObject.Find("Pad_" + tag);
+            s.pad = p != null ? p.GetComponent<TriggerBlock>() : null;
+            s.Rebuild();
+            return;
+        }
+
         // **패드(4x4) 바깥에 두른다.** 안쪽에 그리면 패드 큐브에 가려 안 보인다 —
         // 실제로 4.7/3.8 로 그렸다가 패드 밑에 깔려 통째로 사라진 적이 있다
         GameObject ring = Cylinder(b, "PadGlow_" + tag, at + new Vector3(0f, 0.08f, 0f), 6.2f, 0.03f, "trim");

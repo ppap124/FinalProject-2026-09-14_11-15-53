@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 /// 워크래프트식 마우스 조작.
 ///   좌클릭 / 드래그   선택 (영혼 또는 유닛)
 ///   Shift + 좌클릭    선택에 추가
+///   더블클릭          화면에 보이는 같은 종류 전부
 ///   우클릭            선택한 것을 그 자리로 이동
 ///   ESC               선택 해제
 ///
@@ -25,7 +26,27 @@ public class UnitControl : MonoBehaviour
     bool dragging;
 
     public int SelectedCount => selected.Count;
+
+    /// <summary>고른 유닛 i번째 (히든 조합 칸이 두 마리를 본다)</summary>
+    public Unit SelectedAt(int i)
+    {
+        selected.RemoveAll(x => x == null);
+        return i >= 0 && i < selected.Count ? selected[i] : null;
+    }
     public int SelectedSoulCount => souls.Count;
+
+    /// <summary>뭐라도 골라 두었다 (유닛 · 영혼 · 열린 건물) — Esc 가 메뉴 대신 이걸 먼저 푼다</summary>
+    public bool HasSelection
+    {
+        get
+        {
+            selected.RemoveAll(x => x == null);
+            souls.RemoveAll(x => x == null);
+            return selected.Count > 0 || souls.Count > 0
+                || (ResearchBuilding.Instance != null && ResearchBuilding.Instance.open)
+                || (WarehouseBuilding.Instance != null && WarehouseBuilding.Instance.open);
+        }
+    }
 
     /// <summary>딱 하나만 고른 유닛. 조합창은 이때만 뜨다.</summary>
     public Unit SoleSelectedUnit
@@ -51,7 +72,9 @@ public class UnitControl : MonoBehaviour
         Keyboard k = Keyboard.current;
         if (m == null) return;
 
-        if (k != null && k.escapeKey.wasPressedThisFrame) ClearSelection();
+        if (GenesisHud.Paused) { dragging = false; return; }
+        // HUD 가 있으면 Esc 는 HUD 가 맡는다 (선택이 있으면 해제, 없으면 일시정지 메뉴)
+        if (k != null && k.escapeKey.wasPressedThisFrame && !GenesisHud.HandlesEscape) ClearSelection();
 
         // **HUD 위를 누른 것은 땅을 누른 게 아니다.** 이게 없으면 조합 버튼을 누르는 순간
         // 그 뒤 땅이 같이 눌려서 선택이 풀리고, 버튼은 빈 선택에 대고 실행된다
@@ -105,11 +128,69 @@ public class UnitControl : MonoBehaviour
 
         if (!add) ClearSelection();
 
+        // 더블클릭 — 화면에 보이는 같은 종류를 전부 고른다. 창고에 한꺼번에 넣을 때 쓴다
+        bool twice = Time.unscaledTime - lastClickTime <= doubleClickTime;
+        lastClickTime = Time.unscaledTime;
+
         SoulAvatar soul = SoulUnderCursor(screenPos);
-        if (soul != null) { SelectSoul(soul); return; }
+        if (soul != null)
+        {
+            if (twice && lastClickSoul) { SelectAllOnScreen(null); lastClickTime = -1f; return; }
+            lastClickSoul = true; lastClickType = null;
+            SelectSoul(soul);
+            return;
+        }
 
         Unit hit = UnitUnderCursor(screenPos);
-        if (hit != null) SelectUnit(hit);
+        if (hit == null) { lastClickSoul = false; lastClickType = null; return; }
+
+        if (twice && lastClickType == hit.type) { SelectAllOnScreen(hit.type); lastClickTime = -1f; return; }
+        lastClickSoul = false; lastClickType = hit.type;
+        SelectUnit(hit);
+    }
+
+    [Tooltip("이 시간(초) 안에 두 번 누르면 더블클릭")]
+    public float doubleClickTime = 0.35f;
+
+    float lastClickTime = -1f;
+    UnitType? lastClickType;
+    bool lastClickSoul;
+
+    /// <summary>화면에 보이는 같은 종류를 전부 고른다. type 이 null 이면 영혼</summary>
+    void SelectAllOnScreen(UnitType? type)
+    {
+        if (type == null)
+        {
+            foreach (SoulAvatar s in SoulAvatar.All)
+                if (s != null && OnScreen(s.transform.position)) SelectSoul(s);
+            return;
+        }
+
+        if (SoulShop.Instance == null) return;
+        foreach (Unit u in SoulShop.Instance.Units)
+            if (u != null && u.type == type.Value && OnScreen(u.transform.position)) SelectUnit(u);
+    }
+
+    bool OnScreen(Vector3 world)
+    {
+        Vector3 v = cam.WorldToViewportPoint(world);
+        return v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
+    }
+
+    /// <summary>고른 유닛을 전부 창고에 넣는다. 넣은 수를 돌려준다 (정비 시간에만)</summary>
+    public int StoreSelected()
+    {
+        Warehouse w = Warehouse.Instance;
+        if (w == null || !w.CanMove) return 0;
+
+        selected.RemoveAll(u => u == null);
+        List<Unit> list = new List<Unit>(selected);
+        ClearSelection();
+
+        int n = 0;
+        foreach (Unit u in list)
+            if (w.Store(u)) n++;
+        return n;
     }
 
     void BoxSelect(Vector2 a, Vector2 b, bool add)

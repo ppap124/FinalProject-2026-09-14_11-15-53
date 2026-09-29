@@ -23,7 +23,7 @@ using UnityEngine.UI;
 /// UI 는 전부 코드로 짓는다 — 맵 장식(MapDecor)과 같은 방식이라 값만 고치면 다시 선다.
 /// 연구소·창고도 따로 뜨는 창이 아니라 **건물을 고르면 이 콘솔에** 뜬다 (ShowLab / ShowWarehouse).
 /// </summary>
-public class GenesisHud : MonoBehaviour
+public partial class GenesisHud : MonoBehaviour
 {
     [Header("스프라이트 — Assets/UI/Sprites")]
     public Sprite panel;
@@ -44,6 +44,10 @@ public class GenesisHud : MonoBehaviour
 
     [Tooltip("유닛 초상화 그림. 이름이 `Portrait_<UnitType>` 이어야 한다. 없는 유닛은 실제 모델을 비춘다")]
     public Sprite[] unitPortraits;
+    [Tooltip("고유 스킬 아이콘. 이름이 Skill_<유닛 종류> 여야 한다 (Skill_Titan 등). 없으면 iconSkill")]
+    public Sprite[] skillIcons;
+    [Tooltip("아직 못 찾은 히든 조합 칸 아이콘 (물음표). 없으면 조합 아이콘")]
+    public Sprite iconHidden;
 
     [Header("콘솔")]
     [Tooltip("하단 콘솔 높이. 초상화는 이 안에 세로 가운데로 앉는다")]
@@ -104,6 +108,7 @@ public class GenesisHud : MonoBehaviour
     Image portraitIcon;
     Image portraitArt;
     readonly Dictionary<string, Sprite> portraitMap = new Dictionary<string, Sprite>();
+    readonly Dictionary<string, Sprite> skillIconMap = new Dictionary<string, Sprite>();
 
     readonly List<SlotView> slots = new List<SlotView>();
     readonly Dictionary<string, Text> resText = new Dictionary<string, Text>();
@@ -144,14 +149,28 @@ public class GenesisHud : MonoBehaviour
     void Start()
     {
         EnsureEventSystem();
+        Paused = false;
+        HandlesEscape = true;
         Build();
         BuildPortraitStage();
 
         if (GameLoop.Instance != null) GameLoop.Instance.Ended += OnEnded;
+        UnitCombiner.HiddenFound += OnHiddenFound;
+    }
+
+    void OnHiddenFound(UnitType t, bool first)
+    {
+        string n = UnitTable.Get(t).name;
+        Announce(first ? "히든 발견 — " + n : n,
+                 first ? "조합표에 없는 유닛입니다. 이제 조합 칸에 이름이 보입니다" : "히든 조합",
+                 new Color(1f, 0.86f, 0.45f), first ? 2.4f : 1.2f);
     }
 
     void OnDestroy()
     {
+        UnitCombiner.HiddenFound -= OnHiddenFound;
+        Paused = false;
+        HandlesEscape = false;
         if (GameLoop.Instance != null) GameLoop.Instance.Ended -= OnEnded;
         if (portraitRT != null) portraitRT.Release();
         if (portraitCam != null) Destroy(portraitCam.gameObject);
@@ -182,6 +201,8 @@ public class GenesisHud : MonoBehaviour
 
         if (unitPortraits != null)
             foreach (Sprite s in unitPortraits) if (s != null) portraitMap[s.name] = s;
+        if (skillIcons != null)
+            foreach (Sprite s in skillIcons) if (s != null) skillIconMap[s.name] = s;
 
         BuildTopBar(cg.transform);
 
@@ -197,7 +218,74 @@ public class GenesisHud : MonoBehaviour
         BuildInfo(console);
         BuildCommands(console);
         BuildTooltip(console);
+        BuildBanner(cg.transform);
         BuildResult(cg.transform);
+        BuildPause(cg.transform);
+    }
+
+    // ── 알림 띠 — 화면 가운데 위로 크게 뜨는 한 줄 (카오스 등장 등) ──
+    RectTransform banner;
+    CanvasGroup bannerGroup;
+    Text bannerTitle, bannerSub;
+    Image bannerLineTop, bannerLineBottom;
+    float bannerStart = -100f, bannerHold;
+
+    void BuildBanner(Transform root)
+    {
+        banner = Rect("Banner", root, new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0.5f, 0.5f),
+                      new Vector2(0f, 190f), new Vector2(0f, 150f));
+        Image band = banner.gameObject.AddComponent<Image>();
+        band.color = new Color(0.01f, 0.01f, 0.03f, 0.62f);
+        band.raycastTarget = false;
+        bannerGroup = banner.gameObject.AddComponent<CanvasGroup>();
+        bannerGroup.blocksRaycasts = false;
+        bannerGroup.interactable = false;
+
+        bannerLineTop = Pic(Rect("LineTop", banner, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+                                 Vector2.zero, new Vector2(0f, 2f)), null);
+        bannerLineBottom = Pic(Rect("LineBottom", banner, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f),
+                                    Vector2.zero, new Vector2(0f, 2f)), null);
+
+        bannerTitle = Title(banner, "", 66, goldText, TextAnchor.MiddleCenter, true);
+        Place(bannerTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 18f), new Vector2(1200f, 84f));
+        bannerSub = Label(banner, "", 22, textColor, TextAnchor.MiddleCenter, false);
+        Place(bannerSub.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -44f), new Vector2(1200f, 32f));
+
+        banner.gameObject.SetActive(false);
+    }
+
+    /// <summary>화면 가운데 위에 알림을 띄운다. hold 초 동안 떠 있다가 사라진다</summary>
+    public void Announce(string title, string sub, Color color, float hold)
+    {
+        if (banner == null) return;
+        bannerTitle.text = title;
+        bannerTitle.color = color;
+        bannerSub.text = sub;
+        Color line = new Color(color.r, color.g, color.b, 0.85f);
+        bannerLineTop.color = line;
+        bannerLineBottom.color = line;
+        bannerStart = Time.unscaledTime;
+        bannerHold = hold;
+        banner.gameObject.SetActive(true);
+    }
+
+    void UpdateBanner()
+    {
+        if (banner == null || !banner.gameObject.activeSelf) return;
+
+        const float fadeIn = 0.35f, fadeOut = 0.8f;
+        float t = Time.unscaledTime - bannerStart;
+        if (t > fadeIn + bannerHold + fadeOut) { banner.gameObject.SetActive(false); return; }
+
+        float a = t < fadeIn ? t / fadeIn : t < fadeIn + bannerHold ? 1f : 1f - (t - fadeIn - bannerHold) / fadeOut;
+        bannerGroup.alpha = a;
+
+        // 들어올 때 띠가 위아래로 벌어진다 — 그냥 켜지면 알림이 아니라 글자가 깔린 것처럼 보인다
+        float open = t < fadeIn ? Mathf.SmoothStep(0.2f, 1f, t / fadeIn) : 1f;
+        banner.localScale = new Vector3(1f, open, 1f);
+        // 제목은 살짝 커졌다가 자리를 잡는다
+        float pop = t < fadeIn + 0.25f ? Mathf.Lerp(1.18f, 1f, Mathf.SmoothStep(0f, 1f, t / (fadeIn + 0.25f))) : 1f;
+        bannerTitle.rectTransform.localScale = Vector3.one * pop;
     }
 
     /// <summary>
@@ -346,6 +434,12 @@ public class GenesisHud : MonoBehaviour
             Text t = Label(item, "", 20, textColor, TextAnchor.MiddleLeft, true);
             Place(t.rectTransform, new Vector2(0f, 0.5f), new Vector2(40f, 0f), new Vector2(46f, 30f));
             t.rectTransform.pivot = new Vector2(0f, 0.5f);
+            // 네 자리(1000)부터 칸을 넘어 줄이 꺾이면서 숫자가 사라졌다 — 넘치면 글자를 줄여 칸에 맞춘다.
+            // 다섯 자리부터는 ResNumber 가 12.3k 로 줄여 쓴다
+            t.verticalOverflow = VerticalWrapMode.Truncate;
+            t.resizeTextForBestFit = true;
+            t.resizeTextMinSize = 13;
+            t.resizeTextMaxSize = 20;
             resText[keys[i]] = t;
 
             string tip = names[i];
@@ -603,7 +697,7 @@ public class GenesisHud : MonoBehaviour
                 cb.highlightedColor = new Color(1.25f, 1.2f, 1.05f);
                 cb.pressedColor = new Color(0.8f, 0.8f, 0.8f);
                 v.button.colors = cb;
-                v.button.onClick.AddListener(() => { if (v.ready && v.onClick != null) v.onClick(); });
+                v.button.onClick.AddListener(() => PressSlot(v));
 
                 RectTransform ic = Rect("Icon", s, new Vector2(0.16f, 0.30f), new Vector2(0.84f, 0.90f), new Vector2(0.5f, 0.5f),
                                         Vector2.zero, Vector2.zero);
@@ -697,7 +791,7 @@ public class GenesisHud : MonoBehaviour
         resultStats.rectTransform.pivot = new Vector2(0.5f, 1f);
 
         ResultButton(box, "다시 하기  (Enter)", new Vector2(-130f, 34f), () => GameLoop.Instance.Restart());
-        ResultButton(box, "나가기", new Vector2(130f, 34f), () => GameLoop.Instance.Quit());
+        ResultButton(box, "메인으로", new Vector2(130f, 34f), () => GameLoop.Instance.ToTitle());
 
         result.gameObject.SetActive(false);
     }
@@ -713,7 +807,7 @@ public class GenesisHud : MonoBehaviour
         cb.highlightedColor = new Color(1.25f, 1.2f, 1.05f);
         cb.pressedColor = new Color(0.8f, 0.8f, 0.8f);
         btn.colors = cb;
-        btn.onClick.AddListener(() => click());
+        btn.onClick.AddListener(() => { GenesisAudio.Play(GenesisAudio.Cue.Click); click(); });
 
         RectTransform band = Rect("Band", b, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         band.offsetMin = new Vector2(12f, 10f); band.offsetMax = new Vector2(-12f, -10f);
@@ -851,6 +945,8 @@ public class GenesisHud : MonoBehaviour
     void Update()
     {
         UpdateResult();
+        UpdateBanner();
+        if (PauseTick()) return;   // 멈춘 동안엔 명령 칸 · 선택 갱신을 쉰다
         // 개발용 통계를 위쪽 띠 밑으로 내린다
         if (canvas != null) GameLoop.DebugTop = topBarHeight * canvas.scaleFactor + 8f;
         UpdateResources();
@@ -862,16 +958,25 @@ public class GenesisHud : MonoBehaviour
         RefreshTip();
     }
 
+    /// <summary>자원 칸 숫자. 네 자리까지는 그대로, 그 위는 12.3k · 123k · 1.2M 으로 줄인다</summary>
+    static string ResNumber(long n)
+    {
+        if (n < 10000) return n.ToString();
+        if (n < 100000) return (n / 1000f).ToString("0.#") + "k";
+        if (n < 1000000) return (n / 1000) + "k";
+        return (n / 1000000f).ToString("0.#") + "M";
+    }
+
     void UpdateResources()
     {
         if (resText.Count == 0) return;
-        resText["soul"].text = SoulBank.Instance != null ? SoulBank.Instance.Souls.ToString() : "-";
-        resText["gold"].text = GoldBank.Instance != null ? GoldBank.Instance.Gold.ToString() : "-";
+        resText["soul"].text = SoulBank.Instance != null ? ResNumber(SoulBank.Instance.Souls) : "-";
+        resText["gold"].text = GoldBank.Instance != null ? ResNumber(GoldBank.Instance.Gold) : "-";
         foreach (Culture c in MaterialTable.All)
         {
             Text t;
             if (resText.TryGetValue(c.ToString(), out t))
-                t.text = MaterialBank.Instance != null ? MaterialBank.Instance.Get(c).ToString() : "-";
+                t.text = MaterialBank.Instance != null ? ResNumber(MaterialBank.Instance.Get(c)) : "-";
         }
 
         GameLoop gl = GameLoop.Instance;
@@ -928,6 +1033,7 @@ public class GenesisHud : MonoBehaviour
         // 건물은 유닛과 같은 자리에 뜬다 — 따로 뜨는 창을 없앤 이유다
         if (ResearchBuilding.Instance != null && ResearchBuilding.Instance.open) { ShowLab(); return; }
         if (WarehouseBuilding.Instance != null && WarehouseBuilding.Instance.open) { ShowWarehouse(); return; }
+        wareSel = null;   // 창고를 닫으면 다음에 열 때 목록부터
 
         bool show = u != null || units > 0 || souls > 0;
         // 콘솔은 늘 떠 있다 — 선택이 없을 때 통째로 사라지면 다시 따로 노는 창이 된다
@@ -935,7 +1041,7 @@ public class GenesisHud : MonoBehaviour
 
         if (u != null) ShowUnit(u);
         else if (souls > 0 && units == 0) ShowSouls(souls);
-        else ShowGroup(units + souls);
+        else ShowGroup(units, souls);
     }
 
     void ShowUnit(Unit u)
@@ -996,18 +1102,26 @@ public class GenesisHud : MonoBehaviour
             {
                 if (n >= slots.Count - 2) break;
                 UnitTable.Stats r = UnitTable.Get(o.result);
-                string recipe = o.tier == 2 ? s.name + " 2개 + " + MaterialTable.Name(o.material) + " 재료 1개"
-                              : o.tier == 3 ? MaterialTable.Name(u.Culture) + " 2단계 세 종류를 하나씩"
-                              : s.name + " 2개";
                 UnitCombiner.Option opt = o;
                 SetSlot(slots[n++], iconCombine, o.tier == 2 ? CultureIcon(o.material) : null, r.name,
                         r.name + " 조합  (" + o.tier + "단계)",
-                        recipe + (o.ready ? "" : "\n<color=#ff7a6a>" + o.need + "</color>"),
+                        Recipe(u.type, o) + (o.ready ? "" : "\n<color=#ff7a6a>" + o.need + "</color>"),
                         o.ready,
                         () => { UnitCombiner.Instance.Execute(u, opt); UnitControl.Instance.ClearSelection(); });
             }
         }
         while (n < slots.Count - 2) ClearSlot(slots[n++]);
+
+        // 고유 스킬 — R 칸. 누르는 칸이 아니라 보여 주는 칸이다 (워크3 패시브처럼). 숫자는 충전
+        UnitSkill sk = u.Skill;
+        if (sk != null && slots.Count > 3)
+        {
+            Sprite si;
+            if (!skillIconMap.TryGetValue("Skill_" + u.type, out si)) si = iconSkill;
+            SetSlot(slots[3], si, null, sk.def.name, sk.def.name + "  (고유 스킬)",
+                    sk.def.desc + "\n<color=#9aa0b8>충전 " + sk.Count + " / " + sk.def.every + "</color>", true, () => { });
+            slots[3].count.text = sk.Count + "/" + sk.def.every;
+        }
 
         SetSlot(slots[slots.Count - 2], iconStore, null, "창고", "창고에 넣기",
                 "지금 안 쓰는 유닛을 창고에 보관합니다. 창고에 있어도 조합 재료로 쓰입니다." +
@@ -1015,6 +1129,15 @@ public class GenesisHud : MonoBehaviour
                 Warehouse.Instance != null && Warehouse.Instance.CanMove,
                 () => { if (Warehouse.Instance != null) Warehouse.Instance.Store(u); UnitControl.Instance.ClearSelection(); });
         SetCancel(slots[slots.Count - 1]);
+    }
+
+    /// <summary>조합 칸 설명의 재료 줄 — 필드 유닛 콘솔과 창고 콘솔이 같이 쓴다</summary>
+    static string Recipe(UnitType type, UnitCombiner.Option o)
+    {
+        UnitTable.Stats s = UnitTable.Get(type);
+        return o.tier == 2 ? s.name + " 2개 + " + MaterialTable.Name(o.material) + " 재료 1개"
+             : o.tier == 3 ? MaterialTable.Name(s.culture) + " 2단계 세 종류를 하나씩"
+             : s.name + " 2개";
     }
 
     /// <summary>스탯 네 칸의 제목과 아이콘을 갈아 끼운다 — 유닛은 전투 수치, 연구소는 누적 강화</summary>
@@ -1131,15 +1254,20 @@ public class GenesisHud : MonoBehaviour
 
     int warePage;
 
+    /// <summary>창고 콘솔에서 고른 종류. 고르면 그 종류의 조합·꺼내기 칸이 뜬다</summary>
+    UnitType? wareSel;
+
     void ShowWarehouse()
     {
         Warehouse w = Warehouse.Instance;
+        if (wareSel.HasValue && (w == null || w.Get(wareSel.Value) < 1)) wareSel = null;
+        if (wareSel.HasValue) { ShowStored(wareSel.Value); return; }
+
         bool canMove = w != null && w.CanMove;
         BuildingHead(iconStore, "창고", (w != null ? "보관 " + w.TotalStored + "마리" : "-") + "  ·  Esc 닫기");
         statsRoot.SetActive(false);
-        hintText.text = canMove
-            ? "칸을 누르면 전장으로 1마리 꺼냅니다. 창고에 있어도 조합 재료로 쓰입니다."
-            : "<color=#ff9a8a>라운드 중에는 꺼낼 수 없습니다 — 정비 시간에 꺼내세요.</color>  창고에 있어도 조합 재료로 쓰입니다.";
+        hintText.text = "칸을 누르면 그 유닛을 꺼내지 않고 바로 조합하거나 꺼낼 수 있습니다. 조합 재료는 창고 것부터 씁니다." +
+                        (canMove ? "" : "\n<color=#ff9a8a>라운드 중에는 꺼낼 수 없습니다 — 조합은 됩니다.</color>");
 
         for (int i = 0; i < slots.Count; i++) ClearSlot(slots[i]);
         if (w == null) return;
@@ -1161,9 +1289,16 @@ public class GenesisHud : MonoBehaviour
             int n = w.Get(t);
             Sprite art;
             if (!portraitMap.TryGetValue("Portrait_" + t, out art)) art = CultureIcon(s.culture);
-            SetSlot(slots[i], art, null, s.name, s.name + " 꺼내기  (" + s.tier + "단계)",
-                    "창고에 " + n + "마리. 전장으로 1마리 꺼냅니다." + (canMove ? "" : "\n<color=#ff7a6a>정비 시간에만 꺼낼 수 있습니다</color>"),
-                    canMove, () => w.TakeOut(t, WarehouseBuilding.Instance != null ? WarehouseBuilding.Instance.dropPoint : (Vector3?)null));
+            // 지금 바로 조합할 수 있으면 조합 표식을 단다 — 칸을 열어 보지 않아도 보이게
+            bool canCombine = false;
+            if (UnitCombiner.Instance != null)
+                foreach (UnitCombiner.Option o in UnitCombiner.Instance.OptionsFor(t))
+                    if (o.ready) { canCombine = true; break; }
+
+            SetSlot(slots[i], art, canCombine ? iconCombine : null, s.name, s.name + "  (" + s.tier + "단계)",
+                    "창고에 " + n + "마리." + (canCombine ? "\n<color=#8aff9a>지금 조합할 수 있습니다</color>" : "") +
+                    "\n누르면 조합하거나 꺼냅니다.",
+                    true, () => { wareSel = t; });
             slots[i].count.text = "×" + n;
         }
 
@@ -1172,6 +1307,73 @@ public class GenesisHud : MonoBehaviour
                     () => { warePage = (warePage + 1) % pages; });
 
         SetCancel(slots[slots.Count - 1]);
+    }
+
+    /// <summary>
+    /// 창고에 든 한 종류 — 꺼내지 않고 바로 조합하거나 꺼낸다. 칸 배치는 필드 유닛과 같다
+    /// (조합 칸들 · D 꺼내기 · F 뒤로). 결과는 꺼낼 때와 같은 자리(전투 블록)에 나온다
+    /// </summary>
+    void ShowStored(UnitType t)
+    {
+        Warehouse w = Warehouse.Instance;
+        UnitTable.Stats s = UnitTable.Get(t);
+        int count = w != null ? w.Get(t) : 0;
+        bool canMove = w != null && w.CanMove;
+        Vector3? drop = WarehouseBuilding.Instance != null ? WarehouseBuilding.Instance.dropPoint : (Vector3?)null;
+
+        Sprite art;
+        if (portraitMap.TryGetValue("Portrait_" + t, out art))
+        {
+            ShowPortrait(null);
+            portraitArt.sprite = art;
+            portraitArt.enabled = true;
+            portraitImage.enabled = false;
+        }
+        else
+        {
+            ShowPortrait(t);
+            portraitArt.enabled = false;
+            portraitImage.enabled = true;
+        }
+        portraitIcon.enabled = false;
+
+        nameText.text = s.name;
+        nameText.color = Color.Lerp(textColor, AttackFx.CultureGlow(s.culture), 0.55f);
+        for (int i = 0; i < stars.Count; i++) stars[i].enabled = i < s.tier;
+        starRow.gameObject.SetActive(true);
+        cultureIcon.enabled = s.culture != Culture.None;
+        cultureIcon.sprite = CultureIcon(s.culture);
+        cultureIcon.rectTransform.anchoredPosition = new Vector2(20f + s.tier * StarStep + 8f, RowY);
+        subText.rectTransform.anchoredPosition = new Vector2(20f + s.tier * StarStep + (cultureIcon.enabled ? 38f : 8f), RowY);
+        subText.text = "창고에 " + count + "마리";
+        statsRoot.SetActive(false);
+        synText.text = "";
+        hintText.text = "창고에서 바로 조합합니다 — 결과만 전장에 나옵니다. 재료는 창고 것부터 쓰고, 모자라면 전장 유닛을 씁니다.";
+
+        int n = 0;
+        if (UnitCombiner.Instance != null)
+        {
+            foreach (UnitCombiner.Option o in UnitCombiner.Instance.OptionsFor(t))
+            {
+                if (n >= slots.Count - 2) break;
+                UnitTable.Stats r = UnitTable.Get(o.result);
+                UnitCombiner.Option opt = o;
+                SetSlot(slots[n++], iconCombine, o.tier == 2 ? CultureIcon(o.material) : null, r.name,
+                        r.name + " 조합  (" + o.tier + "단계)",
+                        Recipe(t, o) + (o.ready ? "" : "\n<color=#ff7a6a>" + o.need + "</color>"),
+                        o.ready,
+                        () => UnitCombiner.Instance.ExecuteStored(t, opt, drop));
+            }
+        }
+        while (n < slots.Count - 2) ClearSlot(slots[n++]);
+
+        SetSlot(slots[slots.Count - 2], iconStore, null, "꺼내기", s.name + " 꺼내기",
+                "전장으로 1마리 꺼냅니다." + (canMove ? "" : "\n<color=#ff7a6a>정비 시간에만 꺼낼 수 있습니다</color>"),
+                canMove, () => { if (w != null) w.TakeOut(t, drop); });
+        slots[slots.Count - 2].count.text = "×" + count;
+
+        SetSlot(slots[slots.Count - 1], iconCancel, null, "뒤로", "창고 목록으로", "보관 중인 유닛 목록으로 돌아갑니다.", true,
+                () => { wareSel = null; });
     }
 
     void ShowSouls(int count)
@@ -1218,12 +1420,13 @@ public class GenesisHud : MonoBehaviour
         subText.text = "유닛이나 영혼을 클릭하세요";
         statsRoot.SetActive(false);
         synText.text = "";
-        hintText.text = "좌클릭 선택  ·  드래그로 여러 개  ·  우클릭 이동  ·  QWER / ASDF 명령 칸\n방향키 카메라  ·  F1~F4 전투/영혼/조합표/연구소  ·  1~3 배속  ·  Space 준비 건너뛰기  ·  Esc 해제";
+        hintText.text = "좌클릭 선택  ·  드래그로 여러 개  ·  더블클릭 같은 종류  ·  우클릭 이동  ·  QWER / ASDF 명령 칸\n방향키 카메라  ·  F1~F4 전투/영혼/조합표/연구소  ·  1~3 배속  ·  Space 준비 건너뛰기  ·  Esc 해제 · 메뉴";
         for (int i = 0; i < slots.Count; i++) ClearSlot(slots[i]);
     }
 
-    void ShowGroup(int count)
+    void ShowGroup(int units, int souls)
     {
+        int count = units + souls;
         ShowPortrait(null);
         portraitArt.enabled = false;
         portraitImage.enabled = false;
@@ -1239,9 +1442,48 @@ public class GenesisHud : MonoBehaviour
         subText.text = "여러 유닛";
         statsRoot.SetActive(false);
         synText.text = "";
-        hintText.text = "우클릭으로 함께 옮깁니다. 하나만 고르면 조합할 수 있습니다.";
+        hintText.text = "우클릭으로 함께 옮깁니다. D로 한꺼번에 창고에 넣습니다. 하나만 고르면 조합할 수 있습니다.\n" +
+                        "유닛을 더블클릭하면 화면에 보이는 같은 종류를 전부 고릅니다.";
 
         for (int i = 0; i < slots.Count - 1; i++) ClearSlot(slots[i]);
+
+        // 히든 — 서로 다른 1단계 둘을 고르면 "무언가 반응한다". 조합표에 없는 조합이라
+        // 처음엔 이름을 숨기고(???), 재료가 있을 때만 누를 수 있다. 무슨 재료인지는 안 알려 준다
+        if (units == 2 && souls == 0 && UnitControl.Instance != null)
+        {
+            Unit a = UnitControl.Instance.SelectedAt(0), b = UnitControl.Instance.SelectedAt(1);
+            UnitTable.Hidden h;
+            if (a != null && b != null && UnitTable.TryHidden(a.type, b.type, out h))
+            {
+                bool known = UnitTable.Discovered(h.result);
+                bool haveMat = MaterialBank.Instance != null && MaterialBank.Instance.Get(h.material) >= 1;
+                string rn = UnitTable.Get(h.result).name;
+                Sprite art;
+                if (!known || !portraitMap.TryGetValue("Portrait_" + h.result, out art)) art = iconHidden != null ? iconHidden : iconCombine;
+                SetSlot(slots[0], art, known ? CultureIcon(h.material) : null, known ? rn : "???",
+                        known ? rn + " 조합  (히든)" : "무언가 반응합니다",
+                        known
+                            ? UnitTable.Get(a.type).name + " + " + UnitTable.Get(b.type).name + " + " + MaterialTable.Name(h.material) + " 재료 1개\n조합표에 없는 유닛. 시너지를 받지 않고 더 조합되지 않습니다." +
+                              (haveMat ? "" : "\n<color=#ff7a6a>" + MaterialTable.Name(h.material) + " 필요</color>")
+                            : "두 유닛이 서로 반응합니다. 조합표에 없는 무언가가 나올 것 같습니다." +
+                              (haveMat ? "\n<color=#8aff9a>지금 가진 재료 하나가 함께 떨고 있습니다.</color>"
+                                       : "\n<color=#ff7a6a>아직 무언가가 모자랍니다 — 어떤 재료일까요?</color>"),
+                        haveMat,
+                        () => { UnitCombiner.Instance.CombineHidden(a, b); UnitControl.Instance.ClearSelection(); });
+                hintText.text = "두 유닛이 서로 반응합니다…";
+            }
+        }
+
+        // 여러 마리를 한 번에 창고로 — 한 마리씩 골라 넣던 수고를 던다
+        if (units > 0 && souls == 0)
+        {
+            bool canMove = Warehouse.Instance != null && Warehouse.Instance.CanMove;
+            SetSlot(slots[slots.Count - 2], iconStore, null, "창고", "창고에 넣기  (" + units + "마리)",
+                    "고른 유닛 " + units + "마리를 모두 창고에 보관합니다. 창고에 있어도 조합 재료로 쓰입니다." +
+                    (canMove ? "" : "\n<color=#ff7a6a>정비 시간에만 넣을 수 있습니다</color>"),
+                    canMove, () => UnitControl.Instance.StoreSelected());
+            slots[slots.Count - 2].count.text = "×" + units;
+        }
         SetCancel(slots[slots.Count - 1]);
     }
 
@@ -1257,11 +1499,20 @@ public class GenesisHud : MonoBehaviour
         for (int i = 0; i < slots.Count && i < SlotKeyCodes.Length; i++)
         {
             if (!k[SlotKeyCodes[i]].wasPressedThisFrame) continue;
-            SlotView v = slots[i];
-            if (v.ready && v.onClick != null) v.onClick();
-            refreshAt = 0f;   // 누른 결과(조합, 선택 해제)가 바로 보이게
+            PressSlot(slots[i]);
             return;
         }
+    }
+
+    /// <summary>명령 칸을 눌렀다 — 마우스든 단축키든 여기로 온다. 못 누르는 칸이면 막힌 소리만 낸다</summary>
+    void PressSlot(SlotView v)
+    {
+        if (v.onClick == null) return;   // 빈 칸
+        if (!v.ready) { GenesisAudio.Play(GenesisAudio.Cue.Denied); return; }
+
+        GenesisAudio.Play(GenesisAudio.Cue.Click);
+        v.onClick();
+        refreshAt = 0f;   // 누른 결과(조합, 선택 해제)가 바로 보이게
     }
 
     void SetSendSouls(SlotView v, Sprite icon, string label, string pad, string gives, TriggerBlock.Action action)

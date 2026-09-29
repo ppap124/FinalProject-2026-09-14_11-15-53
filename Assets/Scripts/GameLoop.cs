@@ -39,6 +39,14 @@ public class GameLoop : MonoBehaviour
     [Tooltip("잡몹 키. 1.6 이 100마리가 길 한 줄에 들어가는 한계선이다")]
     public float monsterSize = 1.6f;
 
+    [Tooltip("잡몹이 길 가운데선에서 비켜 걷는 최대 거리. 길이 넓어져서 한 줄이 아니라 " +
+             "여러 줄로 퍼진다. ±3 이면 바깥 줄이 배치 가장자리(16.5)에서 8.5 떨어져 근접(전사 7)이 " +
+             "못 닿았다 — ±2 면 줄이 20~24 라 전사도 닿는다")]
+    public float laneSpread = 2f;
+
+    [Tooltip("몹이 출발점 균열 아래에서 솟아오르는 시간(초). 보스는 2.2배")]
+    public float emergeTime = 0.6f;
+
     [Tooltip("보스 키. 높이 h 는 뒤로 h/(30-h)*41.3 칸을 가린다 — 3.5 면 5.5칸")]
     public float bossSize = 3.5f;
 
@@ -74,6 +82,8 @@ public class GameLoop : MonoBehaviour
     [Tooltip("카오스는 걷지 않고 떠서 온다 — 바닥에서 핵까지 높이")]
     public float chaosHover = 4.2f;
     public GameObject chaosRing, chaosWorld, chaosRubble;
+    [Tooltip("카오스 등장 연출(ChaosIntro)을 켠다")]
+    public bool chaosIntro = true;
 
     [Header("끝")]
     [Tooltip("끝나는 순간 이 배속으로 늦췄다가, endFreezeDelay 뒤에 멈춘다")]
@@ -136,6 +146,7 @@ public class GameLoop : MonoBehaviour
     void Update()
     {
         if (phase == Phase.Over) { FreezeAfterEnd(); return; }
+        if (GenesisHud.Paused) return;   // 멈춘 동안엔 배속 · Space 건너뛰기도 안 먹는다
 
         HandleSpeedKeys();
 
@@ -227,7 +238,10 @@ public class GameLoop : MonoBehaviour
         MonsterArt.Attach(go.transform, round, false, go.transform.localScale.y);
 
         Monster m = go.AddComponent<Monster>();
+        m.lane = Random.Range(-laneSpread, laneSpread);   // 보스 · 카오스는 가운데 줄(0)
         m.Init(route, MonsterHp(round), monsterSpeed);
+        m.Emerge(emergeTime, monsterSize * 1.15f);   // 균열 아래에서 솟아오른다
+        SpawnRift.Emerge(go.transform.position, false);
         alive.Add(m);
 
         if (alive.Count > fieldLimit) GameOver($"몬스터가 필드를 메웠습니다 ({fieldLimit}마리 초과)");
@@ -253,6 +267,8 @@ public class GameLoop : MonoBehaviour
         m.isBoss = true;
         m.bossRound = round;
         m.Init(route, BossHp(round), monsterSpeed * bossSpeedMult);
+        m.Emerge(emergeTime * 2.2f, bossSize * 1.15f);   // 보스는 천천히, 크게
+        SpawnRift.Emerge(go.transform.position, true);
 
         alive.Add(m);
         bosses.Add(m);
@@ -293,6 +309,16 @@ public class GameLoop : MonoBehaviour
         alive.Add(m);
         bosses.Add(m);
         chaos = m;
+
+        // 등장 연출 — 빛기둥 · 충격파 · 떠오름. 머무는 동안은 제한 시간을 깎지 않는다
+        if (chaosIntro)
+        {
+            ChaosIntro intro = go.AddComponent<ChaosIntro>();
+            intro.color = cb.coreColor;
+            intro.subtitle = $"혼돈이 깨어납니다 — {finalTimeLimit:0}초 안에 쓰러뜨리세요";
+            intro.Begin();
+            timer += intro.hold;
+        }
 
         Debug.Log($"[최종] 카오스 등장   체력 {BossHp(round) * finalHpMult:N0}   제한 {finalTimeLimit:0}초");
     }
@@ -364,6 +390,7 @@ public class GameLoop : MonoBehaviour
             GoldBank.Instance.Add(GoldForKill(boss));
 
         kills++;
+        if (m != chaos) GenesisAudio.Play(GenesisAudio.Cue.Kill);
 
         if (m != null && m == chaos)
         {
@@ -426,6 +453,50 @@ public class GameLoop : MonoBehaviour
         return bestBoss != null ? bestBoss : best;
     }
 
+    /// <summary>
+    /// 바닥 거리 반경 안의 산 몬스터를 `into` 에 모은다 (비우고 채운다). 스킬이 쓴다 —
+    /// 피해를 주는 동안 명단이 바뀌므로(죽으면 빠진다) 먼저 모으고 나서 때린다
+    /// </summary>
+    public void Gather(Vector3 center, float radius, List<Monster> into)
+    {
+        into.Clear();
+        float sqr = radius * radius;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - center;
+            d.y = 0f;
+            if (d.sqrMagnitude <= sqr) into.Add(m);
+        }
+    }
+
+    /// <summary>필드의 산 몬스터 전부 — 환웅 스킬처럼 필드 전체를 치는 것용</summary>
+    public void GatherAll(List<Monster> into)
+    {
+        into.Clear();
+        for (int i = 0; i < alive.Count; i++)
+            if (alive[i] != null && !alive[i].IsDying) into.Add(alive[i]);
+    }
+
+    /// <summary>사거리 안에서 남은 체력이 가장 많은 몬스터 — 오딘 궁니르가 노린다</summary>
+    public Monster FindToughest(Vector3 from, float range)
+    {
+        float sqr = range * range;
+        Monster best = null;
+        float bestHp = -1f;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            if (d.sqrMagnitude > sqr) continue;
+            if (m.Hp > bestHp) { bestHp = m.Hp; best = m; }
+        }
+        return best;
+    }
+
     /// <summary>범위 피해 — 그리스 ★ 시너지용. 중심 대상은 제외한다.</summary>
     public void DamageArea(Vector3 center, float radius, float damage, Monster except)
     {
@@ -477,6 +548,14 @@ public class GameLoop : MonoBehaviour
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    /// <summary>타이틀 화면으로. 타이틀 씬이 빌드에 없으면(예전 씬 구성) 그냥 끈다</summary>
+    public void ToTitle()
+    {
+        Time.timeScale = 1f;
+        if (Application.CanStreamedLevelBeLoaded("Title")) SceneManager.LoadScene("Title");
+        else Quit();
     }
 
     public void Quit()

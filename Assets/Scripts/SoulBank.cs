@@ -15,6 +15,8 @@ public class SoulBank : MonoBehaviour
     [Header("생성 위치 (영혼 블록)")]
     public Vector3 spawnCenter = new Vector3(-11f, 1.0f, -18f);
     public float spawnSpread = 3.2f;
+    [Tooltip("이 반지름 안쪽에는 안 생긴다 — 가운데 영혼 샘 자리")]
+    public float spawnInner = 0f;
     public float soulSize = 1.1f;
 
     [Header("겉모습")]
@@ -95,7 +97,11 @@ public class SoulBank : MonoBehaviour
         float hy = soulSize * 0.55f;          // 실제 반높이
         go.transform.localScale = new Vector3(w, hy, w);
 
-        Vector2 r = Random.insideUnitCircle * spawnSpread;
+        // 영혼 샘 둘레 고리에서 생긴다 — 샘 안에서 생기면 샘 테두리에 가려 집기 어렵다
+        Vector2 dir = Random.insideUnitCircle.normalized;
+        if (dir.sqrMagnitude < 0.01f) dir = Vector2.up;
+        float inner = Mathf.Clamp(spawnInner, 0f, spawnSpread);
+        Vector2 r = dir * Mathf.Sqrt(Mathf.Lerp(inner * inner, spawnSpread * spawnSpread, Random.value));
         go.transform.position = new Vector3(spawnCenter.x + r.x, hy, spawnCenter.z + r.y);
 
         // 트리거로 두면 서로 밀지 않고 겹쳐진다. 클릭 판정은 그대로 돌아간다

@@ -10,6 +10,9 @@ public class Monster : MonoBehaviour
     public float maxHp = 100f;
 
     [HideInInspector] public bool isBoss;
+
+    [Tooltip("길 가운데선에서 비킨 거리(+ 바깥 · - 안쪽). 길이 넓어 몹이 여러 줄로 걷는다. Init 전에 넣는다")]
+    public float lane;
     [HideInInspector] public int bossRound;
 
     // 감속 (사제 계열)
@@ -47,6 +50,14 @@ public class Monster : MonoBehaviour
     float hp;
 
     public float HpRatio => maxHp > 0f ? hp / maxHp : 0f;
+    public float Hp => hp;
+
+    // 기절 (티탄 스킬) — 그 자리에 선다
+    float stunUntil;
+    public bool IsStunned => Time.time < stunUntil;
+
+    [Tooltip("보스는 기절이 이 비율로 짧다 — 보스를 묶어 두고 때리는 게 정답이 되면 보스 라운드가 죽는다")]
+    public float bossStunMult = 0.3f;
 
     /// <summary>애니메이터 통로. 없으면 `anim` 이 null 이고 전부 건너뛴다.</summary>
     ActorAnimator anim;
@@ -131,7 +142,7 @@ public class Monster : MonoBehaviour
 
         // 0번은 스폰 지점이므로 1번을 향해 출발한다
         targetIndex = 1;
-        Vector3 start = route.GetPoint(0);
+        Vector3 start = route.GetPoint(0, lane);
         transform.position = new Vector3(start.x, transform.position.y, start.z);
     }
 
@@ -155,7 +166,26 @@ public class Monster : MonoBehaviour
             targetIndex = (targetIndex + 1) % route.Count;
         }
 
-        Vector3 target = route.GetPoint(targetIndex);
+        if (emergeT >= 0f)
+        {
+            emergeT += Time.deltaTime;
+            float k = Mathf.Clamp01(emergeT / emergeDur);
+            k = 1f - (1f - k) * (1f - k);   // 빠르게 솟았다가 끝에서 느려진다
+            Vector3 p = transform.position;
+            p.y = emergeY - emergeDepth * (1f - k);
+            transform.position = p;
+            if (anim != null) anim.SetSpeed(speed * 0.5f);   // 기어오르는 발걸음
+            if (emergeT < emergeDur) return;
+            emergeT = -1f;
+        }
+
+        if (IsStunned)
+        {
+            if (anim != null) anim.SetSpeed(0f);
+            return;
+        }
+
+        Vector3 target = route.GetPoint(targetIndex, lane);
         target.y = transform.position.y;
 
         transform.position = Vector3.MoveTowards(
@@ -178,6 +208,7 @@ public class Monster : MonoBehaviour
         // 막지 않으면 `Die` 가 두 번 돌아 골드와 시너지가 중복으로 들어간다
         if (dying || hp <= 0f) return;
 
+        if (Time.time < exposedUntil) amount *= exposedMult;   // 오라클의 약점 표식
         hp -= amount;
 
         if (hp <= 0f) { Die(); return; }
@@ -202,6 +233,60 @@ public class Monster : MonoBehaviour
         {
             slowUntil = Time.time + duration;
         }
+    }
+
+    // 균열에서 솟아오르기 — 땅 아래에서 제 높이까지. 그동안은 걷지 않는다
+    float emergeT = -1f, emergeDur, emergeDepth, emergeY;
+
+    /// <summary>
+    /// 몹 출발점의 균열 아래에서 솟아오른다. 블록 윗면(y 0)이 불투명이라 땅 아래 몸은 안 보이고,
+    /// 틈을 뚫고 올라오는 것처럼 보인다. Init 다음에 부른다
+    /// </summary>
+    public void Emerge(float duration, float depth)
+    {
+        if (duration <= 0f) return;
+        emergeY = transform.position.y;
+        emergeDur = duration;
+        emergeDepth = depth;
+        emergeT = 0f;
+        Vector3 p = transform.position;
+        p.y = emergeY - depth;
+        transform.position = p;
+    }
+
+    /// <summary>기절. 그 자리에 선다. 보스는 짧게(bossStunMult), 더 긴 기절이 이긴다</summary>
+    public void Stun(float duration)
+    {
+        if (duration <= 0f || dying) return;
+        if (isBoss) duration *= bossStunMult;
+        stunUntil = Mathf.Max(stunUntil, Time.time + duration);
+    }
+
+    // 약점 표식 (오라클 스킬) — 받는 피해가 늘어난다
+    float exposedMult = 1f, exposedUntil;
+    public bool IsExposed => Time.time < exposedUntil;
+
+    /// <summary>받는 피해를 mult 배로. 더 센 표식이 이기고, 같으면 시간만 늘린다</summary>
+    public void Expose(float mult, float duration)
+    {
+        if (dying || duration <= 0f) return;
+        if (!IsExposed || mult >= exposedMult) exposedMult = mult;
+        exposedUntil = Mathf.Max(exposedUntil, Time.time + duration);
+    }
+
+    /// <summary>
+    /// 길을 따라 뒤로 밀린다 (미노타우로스 스킬). **길 밖으로 날리지 않는다** — 지나온 꺾임점까지만
+    /// 밀리므로 길 모서리를 넘어가지 않는다. 보스는 덜 밀린다
+    /// </summary>
+    public void Knockback(float distance)
+    {
+        if (dying || distance <= 0f || route == null || route.Count == 0 || emergeT >= 0f) return;
+        if (isBoss) distance *= bossStunMult;
+
+        int prev = (targetIndex - dir + route.Count) % route.Count;
+        Vector3 back = route.GetPoint(prev, lane);
+        back.y = transform.position.y;
+        transform.position = Vector3.MoveTowards(transform.position, back, distance);
     }
 
     /// <summary>혼란. 경로를 거꾸로 가게 한다 — 사거리 안에 그만큼 오래 머문다.</summary>

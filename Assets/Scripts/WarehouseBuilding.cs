@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 창고 건물. **클릭하면 유닛처럼 선택되고**, 보관 중인 유닛이 HUD 명령 칸에
-/// 초상화로 뜬다 (`GenesisHud.ShowWarehouse`). 칸을 누르면 꺼낸다.
+/// 초상화로 뜬다 (`GenesisHud.ShowWarehouse`). 칸을 누르면 그 종류를 바로 조합하거나 꺼낸다.
 /// 넣는 건 유닛을 골랐을 때의 "창고" 칸으로 한다.
 /// </summary>
 public class WarehouseBuilding : MonoBehaviour

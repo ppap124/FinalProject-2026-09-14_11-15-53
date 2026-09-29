@@ -68,6 +68,24 @@ public static class UISpriteCutter
                 made.Add(path);
             }
 
+        // 고유 스킬 아이콘 — 한 장에 하나씩 뽑았다. 이름은 `Skill_<UnitType>` (GenesisHud.skillIcons)
+        if (Directory.Exists(Src + "Skills"))
+            foreach (string f in Directory.GetFiles(Src + "Skills", "*.png"))
+            {
+                string n = Path.GetFileNameWithoutExtension(f);
+                string path = Icon("Skills/" + n + ".png", "Skill_" + n);
+                small.Add(path);
+                made.Add(path);
+            }
+
+        // 아직 못 찾은 히든 조합 칸 — 물음표
+        if (File.Exists(Src + "hidden.png"))
+        {
+            string path = Icon("hidden.png", "Icon_Hidden");
+            small.Add(path);
+            made.Add(path);
+        }
+
         AssetDatabase.Refresh();
         foreach (string p in made) Configure(p);
         AssetDatabase.Refresh();
@@ -120,6 +138,19 @@ public static class UISpriteCutter
         t.SetPixels(px);
         t.Apply();
         return Save(Trim(t), name);
+    }
+
+    /// <summary>한 장짜리 아이콘 — 흰 배경을 빼고, 다듬고, 정사각으로 (칸에 넣을 때 찌그러지지 않게)</summary>
+    static string Icon(string file, string name)
+    {
+        Texture2D t = Load(file);
+        Color[] px = t.GetPixels();
+        bool[] bg = FloodWhite(px, t.width, t.height, 0, 0, t.width, t.height);
+        for (int i = 0; i < px.Length; i++) if (bg[i]) px[i] = new Color(1, 1, 1, 0);
+        Feather(px, bg, t.width, t.height);
+        t.SetPixels(px);
+        t.Apply();
+        return Save(Square(Trim(t)), name);
     }
 
     static string Portrait(string file, string name)

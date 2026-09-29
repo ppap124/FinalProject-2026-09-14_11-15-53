@@ -29,6 +29,9 @@ public class TriggerBlock : MonoBehaviour
     /// <summary>지금까지 쌓인 영혼</summary>
     public int Stored { get; private set; }
 
+    /// <summary>발동했다 (성공 여부). 바닥 문양(PadSigil)이 번쩍인다</summary>
+    public event System.Action<bool> Fired;
+
     public string LastResult { get; private set; } = "";
     public float LastResultTime { get; private set; } = -99f;
 
@@ -91,6 +94,12 @@ public class TriggerBlock : MonoBehaviour
 
         LastResult = msg;
         LastResultTime = Time.time;
+        if (Fired != null) Fired(ok);
+
+        GenesisAudio.Play(!ok ? GenesisAudio.Cue.Fail
+                        : action == Action.PullUnit ? GenesisAudio.Cue.Summon
+                        : action == Action.PullMaterial ? GenesisAudio.Cue.Material
+                        : GenesisAudio.Cue.Gold);
     }
 
     /// <summary>조합표 패드 — 영혼이 아니라 플레이어가 서 있으면 열린다.</summary>

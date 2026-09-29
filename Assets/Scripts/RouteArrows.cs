@@ -33,20 +33,23 @@ public class RouteArrows : MonoBehaviour
     [Tooltip("모서리에서 이만큼은 비운다 — 꺾이는 자리에 겹쳐 놓이면 방향이 헷갈린다")]
     public float cornerGap = 3.2f;
 
+    [Tooltip("출발점(경로 0번)에서 이 반경 안에는 화살표를 안 놓는다 — 균열 자리. MapDecor 가 균열 크기로 넣는다")]
+    public float spawnClear = 0f;
+
     [Tooltip("길 윗면 높이. 길(`Road_*`) 윗면이 0.15 다")]
     public float surfaceY = 0.16f;
 
     [Header("빛")]
-    [Tooltip("**청록이 아니라 금빛이다.** 청록은 배치 구역 문양과 규칙 표시가 쓰고 있어서, " +
-             "길까지 청록이면 다시 한 덩어리가 된다. 금은 성벽 테두리와 같은 계열이라 " +
-             "팔레트를 안 깬다")]
-    public Color color = new Color(1f, 0.62f, 0.22f, 1f);
+    [Tooltip("**보라 — 혼돈의 길이다.** 청록은 배치 구역 문양 몫이고, 금은 성벽 테두리 · HUD 틀과 섞여 " +
+             "'적의 길'로 안 읽혔다. 진홍(균열 색)은 붉은 적 모델이 그 위에 서면 묻혔다. 보라는 카오스 " +
+             "고리의 식은 빛이라 균열(진홍)에서 흘러나오는 길로 읽히고, 붉은 적이 또렷하게 뜬다")]
+    public Color color = new Color(0.68f, 0.34f, 1f, 1f);
 
-    [Tooltip("평소 밝기")]
-    public float baseIntensity = 0.55f;
+    [Tooltip("평소 밝기 — 보라는 같은 세기에서 금보다 어둡게 보여 조금 올렸다")]
+    public float baseIntensity = 0.6f;
 
     [Tooltip("흐르는 빛이 지나갈 때 밝기")]
-    public float peakIntensity = 2.2f;
+    public float peakIntensity = 2.4f;
 
     [Tooltip("흐르는 빛의 속도(월드/초) — 적보다 조금 빠르게")]
     public float flowSpeed = 9f;
@@ -101,6 +104,11 @@ public class RouteArrows : MonoBehaviour
 
             for (float s = cornerGap; s <= len - cornerGap + 0.001f; s += spacing)
             {
+                // 출발점 균열 위는 비운다 — 화살표가 틈을 덮으면 균열이 바닥 무늬처럼 읽힌다
+                Vector3 at = new Vector3(a.x + dir.x * s, 0f, a.z + dir.z * s);
+                Vector3 sp = route.GetPoint(0); sp.y = 0f;
+                if (spawnClear > 0f && (at - sp).sqrMagnitude < spawnClear * spawnClear) continue;
+
                 GameObject g = new GameObject("Arrow");
                 g.hideFlags = HideFlags.DontSave;
                 g.transform.SetParent(transform, false);

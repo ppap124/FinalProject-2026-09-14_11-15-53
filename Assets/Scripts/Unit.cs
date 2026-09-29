@@ -47,9 +47,16 @@ public class Unit : MonoBehaviour
             if (r != null) r.enabled = false;
         }
         else if (r != null) r.material.color = s.color;
+        creature = GetComponentInChildren<CreatureMotion>();
 
         // 3·4단계는 조합표에서처럼 발밑에 오라가 돈다
         auraRadius = UnitArt.Aura(transform, s.tier, size);
+
+        // 4단계는 전설 — 마법진 둘레에서 문화권 빛 불티가 피어오른다
+        if (s.tier == 4) UnitArt.Legend(transform, auraRadius, AttackFx.CultureGlow(s.culture));
+
+        // 3·4단계 고유 스킬 — N번째 공격마다
+        skill = UnitSkill.Attach(this);
 
         // 쏘는 것도 종류마다 다르다 — 환웅은 구름을 던진다
         float psize;
@@ -185,11 +192,23 @@ public class Unit : MonoBehaviour
             float r = attackRate;
             if (Syn != null) r *= Syn.AttackRateMult(Culture);
             if (Lab != null) r *= Lab.AttackRateMult();
+            if (Time.time < frenzyUntil) r *= frenzyMult;   // 베르세르크 광폭화
             return r;
         }
     }
 
     public float EffectiveDps => EffectiveDamage * EffectiveAttackRate;
+
+    // 광폭화 (베르세르크 스킬) — 잠깐 공속이 오른다
+    float frenzyMult = 1f, frenzyUntil;
+    public bool IsFrenzied => Time.time < frenzyUntil;
+
+    public void Frenzy(float mult, float duration)
+    {
+        frenzyMult = mult;
+        frenzyUntil = Time.time + duration;
+        cooldown = Mathf.Min(cooldown, 1f / Mathf.Max(0.01f, EffectiveAttackRate));   // 바로 빨라지게
+    }
 
 
         public UnitType type = UnitType.Warrior;
@@ -366,6 +385,7 @@ public float range = 10f;
     void Fire()
     {
         if (anim != null) anim.Fire(EffectiveAttackRate);
+        if (creature != null) creature.Strike();
 
         UnitArt.Entry fx = UnitArt.FxFor(type);
         AttackStyle style = fx != null ? fx.style : AttackStyle.Auto;
@@ -435,7 +455,14 @@ public float range = 10f;
             p.SetSynergy(Syn.SplashRadius(Culture), Syn.SplashFraction(Culture),
                          Syn.CritChance(Culture), Syn.CritMult(Culture),
                          Syn.ConfuseTime(Culture));
+
+        if (skill != null) skill.OnAttack(target);
     }
+
+    CreatureMotion creature;   // 뼈 없는 짐승 모델(히든)만
+    UnitSkill skill;
+    /// <summary>고유 스킬. 1단계 · 히든은 null</summary>
+    public UnitSkill Skill => skill;
 
     /// <summary>
     /// 발사체 메시를 지정 크기로 맞추고 콜라이더를 떼어낸다.

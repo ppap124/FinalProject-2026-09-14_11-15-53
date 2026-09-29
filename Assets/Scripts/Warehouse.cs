@@ -44,6 +44,7 @@ public class Warehouse : MonoBehaviour
 
         Add(u.type, 1);
         SoulShop.Instance.Consume(u);
+        GenesisAudio.Play(GenesisAudio.Cue.Store);   // 여러 마리를 한 번에 넣어도 한 번만 난다 (minGap)
         return true;
     }
 
