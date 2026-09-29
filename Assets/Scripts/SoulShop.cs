@@ -15,6 +15,14 @@ public class SoulShop : MonoBehaviour
     [Header("비용")]
     public int unitPullCost = 5;
 
+    [Header("인구수")]
+    [Tooltip("필드에 둘 수 있는 유닛 수. 창고에 든 유닛은 안 센다 · 조합하면 줄어든다. 0 이면 제한 없음.\n\n" +
+             "없으면 1 · 2단계를 100마리 넘게 깔아 두는 물량이 조합보다 나았다 (밸런스 봇, 기획 §51)")]
+    public int unitCap = 40;
+
+    /// <summary>필드가 가득 찼다 — 유닛 패드가 영혼을 안 받는다</summary>
+    public bool AtCap => unitCap > 0 && UnitCount >= unitCap;
+
     [Header("배치 영역 (안쪽 사각형)")]
     [Tooltip("중심에서 각 변까지의 거리. 길 안쪽 경계")]
     public float innerOffset = 12f;
@@ -81,7 +89,7 @@ public class SoulShop : MonoBehaviour
 
     public bool CanPull()
     {
-        return SoulBank.Instance != null && SoulBank.Instance.CanAfford(unitPullCost);
+        return !AtCap && SoulBank.Instance != null && SoulBank.Instance.CanAfford(unitPullCost);
     }
 
     public bool PullUnit()
@@ -96,6 +104,7 @@ public class SoulShop : MonoBehaviour
     /// <summary>영혼을 이미 패드가 먹었을 때 — 비용 없이 유닛만 낸다.</summary>
     public bool SpawnPulledUnit()
     {
+        if (AtCap) return false;
         return SpawnUnit(UnitTable.RandomTier1()) != null;
     }
 

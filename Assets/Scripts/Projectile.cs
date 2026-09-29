@@ -138,10 +138,15 @@ public float lifeTime = 3f;
             target.Confuse(confuseTime);
 
         // 그리스 ★ — 범위 피해. ★★면 반경 2배에 온전한 피해
+        Monster.DamageSource = source;   // 밸런스 통계 — 어느 유닛의 평타인지
         if (splashRadius > 0f && GameLoop.Instance != null)
             GameLoop.Instance.DamageArea(target.transform.position, splashRadius, dmg * splashFraction, target);
 
         target.TakeDamage(dmg);
+        Monster.DamageSource = null;
     }
+
+    /// <summary>밸런스 통계용 이름 ("평타 · 하피"). Unit.Fire 가 넣는다</summary>
+    [HideInInspector] public string source;
 
 }

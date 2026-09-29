@@ -353,8 +353,19 @@ public float range = 10f;
 
         if (cooldown <= 0f)
         {
-            Fire();
-            cooldown = 1f / Mathf.Max(0.01f, EffectiveAttackRate);
+            // **한 프레임에 여러 번 쏠 수 있다.** 배속(20배)에서는 한 프레임이 0.3초라
+            // 한 번만 쏘면 공속 3 이상이 전부 잘려 나갔다 — 하피(5.5)가 절반만 쐈다.
+            // 쉬는 동안 쌓인 시간은 한 프레임 몫까지만 인정한다 (몰아 쏘기 방지)
+            float step = 1f / Mathf.Max(0.01f, EffectiveAttackRate);
+            cooldown = Mathf.Max(cooldown, -Time.deltaTime);
+            int shots = 0;
+            while (cooldown <= 0f && shots++ < 8)
+            {
+                Fire();
+                cooldown += step;
+                if (target == null || target.IsDying || !InRange(target)) target = FindTarget();
+                if (target == null) { cooldown = Mathf.Max(cooldown, 0f); break; }
+            }
         }
     }
 
@@ -436,6 +447,7 @@ public float range = 10f;
 
         p.Init(target, EffectiveDamage, projectileSpeed,
                slowChance, slowAmount, slowDuration);
+        p.source = "평타 · " + UnitTable.Get(type).name;
         p.SetFx(fx != null ? fx.hitEffect : null, fx != null ? fx.hitEffectSize : 1f,
                 fx != null ? fx.arc : 0f, style == AttackStyle.Missile);
 

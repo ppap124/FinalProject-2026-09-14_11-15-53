@@ -31,7 +31,9 @@ public class GameLoop : MonoBehaviour
 
     [Header("몬스터 — 체력 100 x 1.18^(R-1)")]
     public float baseHp = 100f;
-    public float hpGrowth = 1.18f;
+    [Tooltip("라운드마다 몹 체력이 이만큼 곱해진다. 1.23 — 대충 하면 40라운드 보스나 카오스에서 막히고, " +
+             "잘하면 카오스를 90~115초에 잡는다 (밸런스 봇, 기획 §51). 0.01 만 바꿔도 40라운드 체력이 1.4배 달라진다")]
+    public float hpGrowth = 1.23f;
     public float monsterSpeed = 6f;
 
     // 길 중심선 둘레가 약 176칸이라, 게임오버 기준치인 **100마리가 한 줄에**
@@ -75,8 +77,12 @@ public class GameLoop : MonoBehaviour
     public int finalRound = 50;
     [Tooltip("카오스를 잡을 시간(초). 넘기면 패배. 다음 라운드로 넘어가지 않는다")]
     public float finalTimeLimit = 120f;
-    [Tooltip("보스 체력 공식 위에 곱하는 배수")]
+    [Tooltip("보스 체력 공식 위에 곱하는 배수 — chaosHp 가 0 일 때만 쓴다")]
     public float finalHpMult = 1.5f;
+    [Tooltip("카오스 체력 (고정). 0 이면 보스 공식 × finalHpMult.\n\n" +
+             "**몹 성장률과 떼어 둔다** — 공식을 따르면 성장률을 0.02 만 올려도 카오스가 2.6배가 되어 " +
+             "잘하는 봇도 체력의 95% 를 남겼다. 잘하는 봇이 60~90초에 잡는 양으로 맞춘다 (기획 §51)")]
+    public float chaosHp = 10000000f;
     [Tooltip("카오스 지름(월드). 다른 보스보다 확실히 커야 격이 선다")]
     public float chaosDiameter = 8f;
     [Tooltip("카오스는 걷지 않고 떠서 온다 — 바닥에서 핵까지 높이")]
@@ -304,7 +310,7 @@ public class GameLoop : MonoBehaviour
         Monster m = go.AddComponent<Monster>();
         m.isBoss = true;
         m.bossRound = round;
-        m.Init(route, BossHp(round) * finalHpMult, monsterSpeed * bossSpeedMult);
+        m.Init(route, ChaosHp, monsterSpeed * bossSpeedMult);
 
         alive.Add(m);
         bosses.Add(m);
@@ -320,7 +326,7 @@ public class GameLoop : MonoBehaviour
             timer += intro.hold;
         }
 
-        Debug.Log($"[최종] 카오스 등장   체력 {BossHp(round) * finalHpMult:N0}   제한 {finalTimeLimit:0}초");
+        Debug.Log($"[최종] 카오스 등장   체력 {ChaosHp:N0}   제한 {finalTimeLimit:0}초");
     }
 
     void CheckBossDeadline()
@@ -353,6 +359,14 @@ public class GameLoop : MonoBehaviour
         {
             int tier = RollBossTier(bossRound);
             UnitType type = UnitTable.RandomOfTier(tier);
+
+            // 인구수가 차 있으면 창고로 — 보상은 버리지 않는다
+            if (SoulShop.Instance.AtCap && Warehouse.Instance != null)
+            {
+                Warehouse.Instance.Add(type, 1);
+                sb.Append($"{tier}단계 {UnitTable.Get(type).name}(창고)  ");
+                continue;
+            }
             Unit u = SoulShop.Instance.SpawnUnit(type);
 
             sb.Append(u != null ? $"{tier}단계 {UnitTable.Get(type).name}  " : "(자리 없음)  ");
@@ -373,6 +387,7 @@ public class GameLoop : MonoBehaviour
     }
 
     public float BossHp(int r) => SpawnCount(r) * MonsterHp(r) * bossHpMult;
+    public float ChaosHp => chaosHp > 0f ? chaosHp : BossHp(finalRound) * finalHpMult;
 
     // ── 몬스터 조회 ───────────────────────────
 

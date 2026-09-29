@@ -208,7 +208,15 @@ public class Monster : MonoBehaviour
         // 막지 않으면 `Die` 가 두 번 돌아 골드와 시너지가 중복으로 들어간다
         if (dying || hp <= 0f) return;
 
-        if (Time.time < exposedUntil) amount *= exposedMult;   // 오라클의 약점 표식
+        // 밸런스 통계 — 실제로 깎은 체력만 센다 (넘친 피해는 안 친다).
+        // 오라클 표식으로 늘어난 몫은 따로 센다 — 표식이 얼마나 일하는지 봐야 한다
+        float extra = 0f;
+        if (Time.time < exposedUntil) { extra = amount * (exposedMult - 1f); amount *= exposedMult; }
+        float dealt = Mathf.Min(amount, hp);
+        float bonus = amount > 0f ? dealt * extra / amount : 0f;
+        Log(DamageSource ?? "기본 공격", dealt - bonus);
+        if (bonus > 0f) Log("약점 간파 (늘어난 몫)", bonus);
+
         hp -= amount;
 
         if (hp <= 0f) { Die(); return; }
@@ -260,6 +268,22 @@ public class Monster : MonoBehaviour
         if (duration <= 0f || dying) return;
         if (isBoss) duration *= bossStunMult;
         stunUntil = Mathf.Max(stunUntil, Time.time + duration);
+    }
+
+    /// <summary>
+    /// 밸런스 통계 — 피해가 어디서 왔는지. 스킬이 때리기 직전에 이름을 넣고 끝나면 비운다.
+    /// 비어 있으면 "기본 공격". 판마다 BatchTester 가 비운다
+    /// </summary>
+    public static string DamageSource;
+    public static readonly System.Collections.Generic.Dictionary<string, float> DamageLog =
+        new System.Collections.Generic.Dictionary<string, float>();
+
+    static void Log(string src, float v)
+    {
+        if (v <= 0f) return;
+        float sum;
+        DamageLog.TryGetValue(src, out sum);
+        DamageLog[src] = sum + v;
     }
 
     // 약점 표식 (오라클 스킬) — 받는 피해가 늘어난다

@@ -27946,6 +27946,7 @@ MonoBehaviour:
   values:
   - 1.2
   runsPerValue: 5
+  bot: 0
   roundCap: 200
 --- !u!4 &114335937
 Transform:
@@ -750322,7 +750323,7 @@ MonoBehaviour:
   baseSpawnCount: 15
   spawnPerRound: 0.5
   baseHp: 100
-  hpGrowth: 1.2
+  hpGrowth: 1.23
   monsterSpeed: 6
   monsterSize: 4.2
   laneSpread: 2
@@ -750341,6 +750342,7 @@ MonoBehaviour:
   finalRound: 50
   finalTimeLimit: 120
   finalHpMult: 1.5
+  chaosHp: 10000000
   chaosDiameter: 10
   chaosHover: 6.2
   chaosRing: {fileID: 8688467083786147558, guid: 92f2d7b45bdfab54dafa9af8524e70ac, type: 3}
@@ -750377,6 +750379,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SoulShop
   unitPullCost: 1
+  unitCap: 40
   innerOffset: 16.5
   slotSpacing: 2.2
 --- !u!114 &2113599150

@@ -114,7 +114,7 @@ public partial class GenesisHud : MonoBehaviour
     readonly Dictionary<string, Text> resText = new Dictionary<string, Text>();
 
     // ── 위 띠 — 왼쪽 라운드 · 가운데 필드 게이지 · 오른쪽 자원 ──
-    Text roundText, phaseText, timeText, gaugeLabel, gaugeText;
+    Text roundText, phaseText, timeText, gaugeLabel, gaugeText, popText;
     Image phaseChip, gaugeFill;
     RectTransform gaugeFillRect, topTip;
     Text topTipText;
@@ -139,6 +139,7 @@ public partial class GenesisHud : MonoBehaviour
         public Button button;
         public Image frame, icon, badge, band;
         public Text label, key, count;
+        public Image countChip;
         public System.Action onClick;
         public string title, body;
         public bool ready;
@@ -312,7 +313,7 @@ public partial class GenesisHud : MonoBehaviour
         // ── 왼쪽: 명판 위에 라운드 · 단계 칩 · 시간 ──
         // 명판은 바르코로 뽑은 9분할 — 양 끝 금세공은 제 모양 그대로, 가운데 곧은 테만 늘어난다
         float cap = 24f;   // 명판이 없을 때의 안쪽 여백
-        const float leftW = 420f;
+        const float leftW = 520f;   // 라운드 · 단계 · 시간 · 인구
         if (topPlaque != null)
         {
             RectTransform lp = Rect("PlaqueL", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
@@ -331,6 +332,10 @@ public partial class GenesisHud : MonoBehaviour
 
         timeText = Label(p, "", 22, textColor, TextAnchor.MiddleLeft, true);
         Place(timeText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 204f, mid), new Vector2(80f, 32f));
+
+        // 인구수 — 필드 유닛 / 상한. 가득 차면 붉게 (유닛 패드가 영혼을 안 받는다)
+        popText = Label(p, "", 18, textColor, TextAnchor.MiddleLeft, true);
+        Place(popText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 280f, mid), new Vector2(110f, 32f));
 
         // ── 가운데: 필드 게이지 (최종전에는 카오스 체력) ──
         // 게이지 틀은 9분할이고 **테두리가 곧 창 자리**다 (UISpriteCutter.GaugeFrame 이 창을 재서 넣었다).
@@ -623,7 +628,7 @@ public partial class GenesisHud : MonoBehaviour
 
         // 시너지는 이름 줄 오른쪽 — 아래에 두면 스탯과 겹친다
         synText = Label(p, "", 15, goldText, TextAnchor.MiddleRight, false);
-        Place(synText.rectTransform, new Vector2(1f, 1f), new Vector2(-18f, -8f), new Vector2(460f, 36f));
+        Place(synText.rectTransform, new Vector2(1f, 1f), new Vector2(-18f, -8f), new Vector2(640f, 36f));
 
         // 단계 별 + 문화권
         starRow = Rect("Stars", p, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
@@ -704,8 +709,10 @@ public partial class GenesisHud : MonoBehaviour
                 v.icon = Pic(ic, null);
                 v.icon.preserveAspect = true;
 
-                RectTransform bd = Rect("Badge", s, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-                                        new Vector2(-3f, -3f), new Vector2(24f, 24f));
+                // 배지(재료 문화권 · 조합 가능)는 **오른쪽 아래, 글자 띠 바로 위** — 오른쪽 위는 숫자 자리라
+                // 둘이 겹쳐 "×3" 이 조합 표식에 먹혔다
+                RectTransform bd = Rect("Badge", s, new Vector2(1f, 0.30f), new Vector2(1f, 0.30f), new Vector2(1f, 0f),
+                                        new Vector2(-4f, 1f), new Vector2(22f, 22f));
                 v.badge = Pic(bd, null);
 
                 // 글자 띠 — 아이콘 위에 바로 쓰면 묻혀서 안 읽혔다
@@ -733,9 +740,20 @@ public partial class GenesisHud : MonoBehaviour
                 // 단축키 글자 — 워크3처럼 칸 자리마다 키가 정해져 있다
                 v.key = Label(s, SlotKeys[index], 14, goldText, TextAnchor.UpperLeft, true);
                 Place(v.key.rectTransform, new Vector2(0f, 1f), new Vector2(7f, -4f), new Vector2(22f, 20f));
-                // 오른쪽 위 숫자 — 연구 레벨, 창고 수량
-                v.count = Label(s, "", 14, textColor, TextAnchor.UpperRight, true);
-                Place(v.count.rectTransform, new Vector2(1f, 1f), new Vector2(-7f, -4f), new Vector2(40f, 20f));
+                Outline ko = v.key.gameObject.AddComponent<Outline>();   // 아이콘 그림 위에서도 읽히게
+                ko.effectColor = new Color(0f, 0f, 0f, 0.9f);
+                ko.effectDistance = new Vector2(1f, -1f);
+                // 오른쪽 위 숫자 — 연구 레벨, 창고 수량, 스킬 충전. **어두운 받침 위에** 쓴다 —
+                // 그림 위에 바로 쓰면 "×3" 이 초상화에 묻혀 "83" 처럼 보였다
+                RectTransform chip = Rect("CountChip", s, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
+                                          new Vector2(-4f, -4f), new Vector2(40f, 19f));
+                v.countChip = chip.gameObject.AddComponent<Image>();
+                v.countChip.color = new Color(0.02f, 0.03f, 0.07f, 0.85f);
+                v.countChip.raycastTarget = false;
+                v.count = Label(chip, "", 14, textColor, TextAnchor.MiddleCenter, true);
+                RectTransform crt = v.count.rectTransform;
+                crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+                crt.offsetMin = Vector2.zero; crt.offsetMax = Vector2.zero;
 
                 slots.Add(v);
             }
@@ -743,7 +761,7 @@ public partial class GenesisHud : MonoBehaviour
 
     void BuildTooltip(RectTransform console)
     {
-        float w = CmdWidth + 40f;
+        float w = CmdWidth + 130f;   // 명령 칸 폭에 맞췄더니 스킬 설명이 다섯 줄로 꺾였다
         tooltip = Rect("Tooltip", console, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f),
                        new Vector2(-4f, 6f), new Vector2(w, 124f));
         Panel(tooltip).raycastTarget = false;
@@ -822,12 +840,14 @@ public partial class GenesisHud : MonoBehaviour
     {
         GameLoop gl = GameLoop.Instance;
         HideTip();
+        // 떠 있던 알림 띠는 걷는다 — 결과 창 뒤로 "히든 발견" 글자가 비쳐 보였다
+        if (banner != null) banner.gameObject.SetActive(false);
 
         resultEmblem.sprite = won ? emblemVictory : emblemDefeat;
         resultTitle.text = won ? "승리" : "패배";
         resultTitle.color = won ? goldText : new Color(0.95f, 0.45f, 0.55f);
         resultReason.text = won ? "카오스가 부서지고, 세계는 다시 이어집니다."
-                                : gl.OverReason + "  (" + gl.Round + "라운드)";
+                                : gl.OverReason;   // 라운드는 아래 기록 줄에 있다 — 두 번 쓰지 않는다
 
         int secs = Mathf.FloorToInt(gl.PlayTime);
         string time = (secs / 60) + "분 " + (secs % 60).ToString("00") + "초";
@@ -955,7 +975,24 @@ public partial class GenesisHud : MonoBehaviour
         if (Time.unscaledTime < refreshAt) return;
         refreshAt = Time.unscaledTime + 0.1f;
         UpdateSelection();
+        SyncChips();
         RefreshTip();
+    }
+
+    /// <summary>칸 오른쪽 위 숫자 받침 — 숫자가 있을 때만, 글 폭에 맞춰</summary>
+    void SyncChips()
+    {
+        foreach (SlotView v in slots)
+        {
+            if (v.countChip == null) continue;
+            bool on = !string.IsNullOrEmpty(v.count.text);
+            v.countChip.enabled = on;
+            if (on)
+            {
+                RectTransform r = v.countChip.rectTransform;
+                r.sizeDelta = new Vector2(Mathf.Max(22f, v.count.preferredWidth + 10f), r.sizeDelta.y);
+            }
+        }
     }
 
     /// <summary>자원 칸 숫자. 네 자리까지는 그대로, 그 위는 12.3k · 123k · 1.2M 으로 줄인다</summary>
@@ -977,6 +1014,13 @@ public partial class GenesisHud : MonoBehaviour
             Text t;
             if (resText.TryGetValue(c.ToString(), out t))
                 t.text = MaterialBank.Instance != null ? ResNumber(MaterialBank.Instance.Get(c)) : "-";
+        }
+
+        SoulShop shop = SoulShop.Instance;
+        if (popText != null && shop != null)
+        {
+            popText.text = shop.unitCap > 0 ? "<size=14><color=#9aa0b8>인구</color></size> " + shop.UnitCount + "/" + shop.unitCap : "";
+            popText.color = shop.AtCap ? new Color(1f, 0.45f, 0.40f) : textColor;
         }
 
         GameLoop gl = GameLoop.Instance;
@@ -1073,7 +1117,8 @@ public partial class GenesisHud : MonoBehaviour
         cultureIcon.sprite = CultureIcon(u.Culture);
         cultureIcon.rectTransform.anchoredPosition = new Vector2(20f + s.tier * StarStep + 8f, RowY);
         subText.rectTransform.anchoredPosition = new Vector2(20f + s.tier * StarStep + (cultureIcon.enabled ? 38f : 8f), RowY);
-        subText.text = s.tier + "단계" + (u.Culture != Culture.None ? "  ·  " + MaterialTable.Name(u.Culture) : "");
+        // 문화권 이름 — 재료 이름(암브로시아 · 룬석 · 여의주)이 아니다
+        subText.text = s.tier + "단계" + (u.Culture != Culture.None ? "  ·  " + MaterialTable.CultureName(u.Culture) : "");
 
         StatHeads("공격력", iconAttack, "공격 속도", iconSpeed, "사거리", iconRange, "DPS", iconSkill);
         statsRoot.SetActive(true);
@@ -1087,10 +1132,15 @@ public partial class GenesisHud : MonoBehaviour
         SynergyManager syn = SynergyManager.Instance;
         if (syn != null && u.Culture != Culture.None)
         {
+            // 몇 마리째인지와 다음 문턱을 같이 — 배수만 있으면 몇 마리 더 모아야 하는지 몰랐다
             float dm = syn.DamageMult(u.Culture), am = syn.AttackRateMult(u.Culture);
+            int have = syn.Count(u.Culture), lv = syn.Level(u.Culture);
+            int next = lv == 0 ? syn.SmallCut : lv == 1 ? syn.BigCut : lv == 2 ? syn.HugeCut : 0;
+            string mark = lv >= 3 ? "★★" : lv == 2 ? "★" : lv == 1 ? "☆" : "";
+            string head = MaterialTable.CultureName(u.Culture) + " 시너지 " + mark + "  " + have + (next > 0 ? "/" + next : "") + "마리";
             synText.text = (dm > 1.001f || am > 1.001f)
-                ? MaterialTable.Name(u.Culture) + " 시너지  ·  공격력 ×" + dm.ToString("0.00") + "  ·  공격 속도 ×" + am.ToString("0.00")
-                : MaterialTable.Name(u.Culture) + " 시너지 없음";
+                ? head + "  ·  공격력 ×" + dm.ToString("0.00") + (am > 1.001f ? "  ·  공격 속도 ×" + am.ToString("0.00") : "")
+                : head;
         }
         else synText.text = "";
 
@@ -1136,7 +1186,7 @@ public partial class GenesisHud : MonoBehaviour
     {
         UnitTable.Stats s = UnitTable.Get(type);
         return o.tier == 2 ? s.name + " 2개 + " + MaterialTable.Name(o.material) + " 재료 1개"
-             : o.tier == 3 ? MaterialTable.Name(s.culture) + " 2단계 세 종류를 하나씩"
+             : o.tier == 3 ? MaterialTable.CultureName(s.culture) + " 2단계 세 종류를 하나씩"
              : s.name + " 2개";
     }
 
@@ -1367,9 +1417,11 @@ public partial class GenesisHud : MonoBehaviour
         }
         while (n < slots.Count - 2) ClearSlot(slots[n++]);
 
+        bool full = SoulShop.Instance != null && SoulShop.Instance.AtCap;
         SetSlot(slots[slots.Count - 2], iconStore, null, "꺼내기", s.name + " 꺼내기",
-                "전장으로 1마리 꺼냅니다." + (canMove ? "" : "\n<color=#ff7a6a>정비 시간에만 꺼낼 수 있습니다</color>"),
-                canMove, () => { if (w != null) w.TakeOut(t, drop); });
+                "전장으로 1마리 꺼냅니다." + (canMove ? "" : "\n<color=#ff7a6a>정비 시간에만 꺼낼 수 있습니다</color>")
+                + (full ? "\n<color=#ff7a6a>인구수가 가득 찼습니다</color>" : ""),
+                canMove && !full, () => { if (w != null) w.TakeOut(t, drop); });
         slots[slots.Count - 2].count.text = "×" + count;
 
         SetSlot(slots[slots.Count - 1], iconCancel, null, "뒤로", "창고 목록으로", "보관 중인 유닛 목록으로 돌아갑니다.", true,
@@ -1570,6 +1622,10 @@ public partial class GenesisHud : MonoBehaviour
         if (string.IsNullOrEmpty(v.title)) { tooltip.gameObject.SetActive(false); return; }
         tipTitle.text = v.title + "   <color=#ffd873>[" + v.key.text + "]</color>";
         tipBody.text = v.body;
+        // 높이를 글에 맞춘다 — 124 로 고정이라 한 줄짜리는 아래가 텅 비고, 네 줄짜리는 판 밖으로 넘쳤다
+        float bodyH = Mathf.Max(22f, tipBody.preferredHeight);
+        tipBody.rectTransform.sizeDelta = new Vector2(tipBody.rectTransform.sizeDelta.x, bodyH);
+        tooltip.sizeDelta = new Vector2(tooltip.sizeDelta.x, 44f + bodyH + 28f);
         tooltip.gameObject.SetActive(true);
     }
 

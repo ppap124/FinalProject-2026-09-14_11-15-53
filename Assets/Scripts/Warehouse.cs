@@ -60,8 +60,8 @@ public class Warehouse : MonoBehaviour
     public bool TakeOut(UnitType t, Vector3? at = null)
     {
         if (!CanMove) return false;
+        if (SoulShop.Instance == null || SoulShop.Instance.AtCap) return false;   // 인구수
         if (!Remove(t, 1)) return false;
-        if (SoulShop.Instance == null) return false;
 
         return SoulShop.Instance.SpawnUnit(t, at) != null;
     }

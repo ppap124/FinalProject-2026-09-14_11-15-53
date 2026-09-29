@@ -42,7 +42,30 @@ public class TriggerBlock : MonoBehaviour
         if (action == Action.ShowRecipe) { RecipeTick(); return; }
         if (soulCost <= 0) return;
 
+        // 인구수가 차면 유닛 패드는 영혼을 안 먹는다 — 영혼은 패드 위에 남았다가 자리가 나면 들어간다
+        if (action == Action.PullUnit && SoulShop.Instance != null && SoulShop.Instance.AtCap)
+        {
+            if (Time.time - LastResultTime > 1.5f && SoulNearby())
+            {
+                LastResult = "인구 가득";
+                LastResultTime = Time.time;
+            }
+            return;
+        }
+
         EatSouls();
+    }
+
+    bool SoulNearby()
+    {
+        Vector3 a = transform.position; a.y = 0f;
+        foreach (SoulAvatar s in SoulAvatar.All)
+        {
+            if (s == null) continue;
+            Vector3 b = s.transform.position; b.y = 0f;
+            if ((a - b).sqrMagnitude <= radius * radius) return true;
+        }
+        return false;
     }
 
     void EatSouls()

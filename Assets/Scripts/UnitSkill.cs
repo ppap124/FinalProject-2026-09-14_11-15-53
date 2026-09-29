@@ -118,9 +118,10 @@ public class UnitSkill : MonoBehaviour
                                  color = new Color(0.7f, 0.9f, 1f),
                                  desc = "5번째 공격마다 사거리 ×1.5 안에서 체력이 가장 많은 적에게 창을 던져 공격력 ×6 피해를 줍니다. 보스를 노립니다." };
             case UnitType.Hwanung:
-                return new Def { kind = Kind.Storm, name = "풍백 · 우사 · 운사", every = 6, power = 1f, effect = 0.4f, duration = 2.5f,
+                // ×1 이었을 때 이 스킬 하나가 전체 피해의 35~53% 를 냈다 — 필드 전체라 몹이 쌓일수록 세진다 (§51)
+                return new Def { kind = Kind.Storm, name = "풍백 · 우사 · 운사", every = 6, power = 0.4f, effect = 0.4f, duration = 2.5f,
                                  color = new Color(0.75f, 0.9f, 1f),
-                                 desc = "6번째 공격마다 바람 · 비 · 구름을 불러 필드의 적 모두에게 공격력 ×1 피해를 주고 2.5초 동안 40% 느리게 합니다." };
+                                 desc = "6번째 공격마다 바람 · 비 · 구름을 불러 필드의 적 모두에게 공격력 ×0.4 피해를 주고 2.5초 동안 40% 느리게 합니다." };
         }
         return new Def { kind = Kind.None };
     }
@@ -158,6 +159,8 @@ public class UnitSkill : MonoBehaviour
         if (gl == null || unit == null) return;
         float dmg = unit.EffectiveDamage * def.power;
         Vector3 at = Ground(target.transform.position);
+        Monster.DamageSource = def.name;   // 밸런스 통계
+        Casts[def.name] = (Casts.ContainsKey(def.name) ? Casts[def.name] : 0) + 1;
 
         switch (def.kind)
         {
@@ -333,8 +336,12 @@ public class UnitSkill : MonoBehaviour
             }
         }
 
+        Monster.DamageSource = null;
         GenesisAudio.Play(GenesisAudio.Cue.Skill);
     }
+
+    /// <summary>밸런스 통계 — 스킬별 발동 횟수. 판마다 BatchTester 가 비운다</summary>
+    public static readonly Dictionary<string, int> Casts = new Dictionary<string, int>();
 
     static Vector3 Ground(Vector3 p) { p.y = 0f; return p; }
 
@@ -712,7 +719,9 @@ public class TalismanBlast : MonoBehaviour
         if (GameLoop.Instance != null)
         {
             GameLoop.Instance.Gather(at, radius, hits);
+            Monster.DamageSource = "폭렬 부적";
             foreach (Monster m in hits) m.TakeDamage(damage);
+            Monster.DamageSource = null;
         }
         SkillFx.Shock(at, radius, color, 0.4f, 0.45f);
         SkillFx.Sparks(at, color, 34, 8f, 0.6f);

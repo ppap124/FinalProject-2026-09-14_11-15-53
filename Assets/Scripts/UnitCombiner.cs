@@ -45,7 +45,7 @@ public class UnitCombiner : MonoBehaviour
         return false;
     }
 
-    bool TryTier4()
+    public bool TryTier4()
     {
         foreach (Culture c in MaterialTable.All)
         {
@@ -65,7 +65,7 @@ public class UnitCombiner : MonoBehaviour
         return false;
     }
 
-    bool TryTier3()
+    public bool TryTier3()
     {
         foreach (Culture c in MaterialTable.All)
         {
@@ -297,6 +297,13 @@ public class UnitCombiner : MonoBehaviour
         if (!SpendRest(type, o, null)) return false;
         if (!Warehouse.Instance.Remove(type, 1)) return false;
 
+        // 필드가 가득이면 결과도 창고로 — 창고 것끼리 조합해서 인구수를 넘기는 길을 막는다
+        if (SoulShop.Instance.AtCap)
+        {
+            Warehouse.Instance.Add(o.result, 1);
+            Done(o.result, at ?? Vector3.zero);
+            return true;
+        }
         Unit made = SoulShop.Instance.SpawnUnit(o.result, at);
         Done(o.result, made != null ? made.transform.position : (at ?? Vector3.zero));
         return true;

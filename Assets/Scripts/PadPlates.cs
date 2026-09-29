@@ -55,6 +55,9 @@ public class PadPlates : MonoBehaviour
             // 한 개에 한 번 발동하면 "0/1" 은 늘 같은 글이라 정보가 없다 — 그땐 값만 적는다
             string line = p.soulCost > 1 ? "영혼 " + p.Stored + "/" + p.soulCost + extra
                                          : "영혼 1개" + extra;
+            // 인구수가 차면 유닛 패드는 영혼을 안 먹는다 — 왜 안 들어가는지 여기서 보여 준다
+            bool full = p.action == TriggerBlock.Action.PullUnit && SoulShop.Instance != null && SoulShop.Instance.AtCap;
+            if (full) line = "인구 가득 " + SoulShop.Instance.UnitCount + "/" + SoulShop.Instance.unitCap;
 
             Vector3 w = p.transform.position; w.y = 0f; w.z -= frontOffset;
             Vector3 sp = cam.WorldToScreenPoint(w);
@@ -76,7 +79,10 @@ public class PadPlates : MonoBehaviour
 
             titleStyle.normal.textColor = col;
             Shadowed(new Rect(box.x, box.y + padY, box.width, ts.y), title, titleStyle);
+            Color lineKeep = lineStyle.normal.textColor;
+            if (full) lineStyle.normal.textColor = new Color(1f, 0.45f, 0.40f);
             Shadowed(new Rect(box.x, box.y + padY + ts.y, box.width, ls.y), line, lineStyle);
+            lineStyle.normal.textColor = lineKeep;
         }
     }
 
@@ -94,21 +100,26 @@ public class PadPlates : MonoBehaviour
         return Mathf.Abs(hit.x - c.x) <= s.x * 0.5f && Mathf.Abs(hit.z - c.z) <= s.z * 0.5f;
     }
 
+    int styledFor;
+
     void Styles()
     {
-        if (titleStyle != null) return;
+        // HUD 와 같은 배율로 — 화면 높이가 바뀌면 다시 만든다 (조합표 명판과 같다)
+        if (titleStyle != null && styledFor == Screen.height) return;
+        styledFor = Screen.height;
+        float k = Mathf.Clamp(Screen.height / 1080f, 0.6f, 2f);
         if (hud == null) hud = FindFirstObjectByType<GenesisHud>();
 
         titleStyle = new GUIStyle(GUI.skin.label);
         titleStyle.font = hud != null && hud.fontTitle != null ? hud.fontTitle : (hud != null ? hud.fontBold : null);
-        titleStyle.fontSize = 18;
+        titleStyle.fontSize = Mathf.RoundToInt(18 * k);
         titleStyle.alignment = TextAnchor.MiddleCenter;
         titleStyle.padding = new RectOffset(0, 0, 0, 0);
         titleStyle.wordWrap = false;
 
         lineStyle = new GUIStyle(titleStyle);
         lineStyle.font = hud != null ? hud.fontBold : null;
-        lineStyle.fontSize = 14;
+        lineStyle.fontSize = Mathf.RoundToInt(14 * k);
         lineStyle.normal.textColor = new Color(0.82f, 0.84f, 0.90f);
 
     }

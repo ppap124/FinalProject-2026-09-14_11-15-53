@@ -357,9 +357,11 @@ public class TitleMenu : MonoBehaviour
     {
         modal = Rect("Modal", root, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         Image dim = modal.gameObject.AddComponent<Image>();
-        dim.color = new Color(0.01f, 0.015f, 0.04f, 0.6f);
+        dim.color = new Color(0.01f, 0.015f, 0.04f, 0.72f);
 
-        RectTransform box = Rect("Box", modal, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -50f), new Vector2(880f, 580f));
+        // 880×580 일 때 도감(히든 셋)과 조작법이 창을 넘쳐 닫기 버튼 밑으로 깔렸다 — 키우고,
+        // 아래 130 은 닫기 버튼 자리로 비워 둔다
+        RectTransform box = Rect("Box", modal, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -40f), new Vector2(960f, 720f));
         Image fill = box.gameObject.AddComponent<Image>();
         fill.color = panelFill;
         if (panel != null)
@@ -371,7 +373,7 @@ public class TitleMenu : MonoBehaviour
         modalTitle = Title(box, "", 44, goldText, true);
         Place(modalTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(800f, 60f));
         modalContent = Rect("Content", box, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        modalContent.offsetMin = new Vector2(70f, 110f); modalContent.offsetMax = new Vector2(-70f, -120f);
+        modalContent.offsetMin = new Vector2(80f, 140f); modalContent.offsetMax = new Vector2(-80f, -125f);
         modalBody = Label(modalContent, "", 21, textColor, TextAnchor.UpperLeft, false);
         modalBody.lineSpacing = 1.35f;
         Stretch(modalBody.rectTransform);
@@ -390,12 +392,14 @@ public class TitleMenu : MonoBehaviour
             if (modalContent.GetChild(i) != modalBody.transform) Destroy(modalContent.GetChild(i).gameObject);
         modal.gameObject.SetActive(true);
         menuGroup.interactable = false;
+        menuGroup.alpha = 0f;   // 창 밑으로 메뉴 버튼 끝이 비쳐 나왔다 — 창이 떠 있는 동안은 숨긴다
     }
 
     void CloseModal()
     {
         modal.gameObject.SetActive(false);
         menuGroup.interactable = true;
+        menuGroup.alpha = 1f;
     }
 
     void ShowCodex()

@@ -136,13 +136,16 @@ public class RecipeDisplay : MonoBehaviour
             Zone(ci, cx, tint);
             Arrow(new Vector3(cx, 0f, rowTier3), padTier3 * 0.5f, new Vector3(cx, 0f, rowTier4), padTier4 * 0.5f);
 
-            // 3·4단계 명판은 옆에 — 아래는 모여드는 화살표 자리다
+            // 3·4단계 명판은 옆에 — 아래는 모여드는 화살표 자리다.
+            // 3단계는 **오른쪽 위**로 올린다: 노드 높이에 두면 오른쪽 아래에서 올라오는 화살표 끝과 겹쳤다.
+            // 4단계는 고리가 커서(원근으로 옆으로 퍼진다) 더 밀어낸다 — 명판이 고리 테를 덮었다
             plates.Add(new Plate { kind = PlateKind.Tier3, type = t3, culture = c, anchor = TextAnchor.MiddleLeft,
-                                   at = new Vector3(cx + padTier3 * 0.5f + 0.4f, 0f, rowTier3) });
+                                   at = new Vector3(cx + padTier3 * 0.5f + 1.0f, 0f, rowTier3 + padTier3 * 0.35f) });
             plates.Add(new Plate { kind = PlateKind.Tier4, type = t4, need = t3, culture = c, anchor = TextAnchor.MiddleLeft,
-                                   at = new Vector3(cx + padTier4 * 0.5f + 0.4f, 0f, rowTier4) });
-            plates.Add(new Plate { kind = PlateKind.Times, culture = c, anchor = TextAnchor.MiddleLeft,
-                                   at = new Vector3(cx + 0.5f, 0f, (rowTier3 + padTier3 * 0.5f + rowTier4 - padTier4 * 0.5f) * 0.5f) });
+                                   at = new Vector3(cx + padTier4 * 0.5f + 1.4f, 0f, rowTier4) });
+            // ×2 는 세로 화살표의 **왼쪽** — 오른쪽은 3단계 명판 자리다
+            plates.Add(new Plate { kind = PlateKind.Times, culture = c, anchor = TextAnchor.MiddleRight,
+                                   at = new Vector3(cx - 0.5f, 0f, (rowTier3 + padTier3 * 0.5f + rowTier4 - padTier4 * 0.5f) * 0.5f) });
         }
 
         Refresh();
@@ -955,15 +958,21 @@ public class RecipeDisplay : MonoBehaviour
     GUIStyle titleStyle, lineStyle, shadowStyle, headStyle, timesStyle;
     GenesisHud hud;
 
+    int styledFor;
+
     void Styles()
     {
-        if (titleStyle != null) return;
+        // OnGUI 는 화면 픽셀 그대로 그린다 — HUD(1920×1080 기준 배율)와 같이 커지고 작아지게
+        // 화면 높이가 바뀌면 다시 만든다. 전엔 고정 픽셀이라 창을 줄이면 명판만 커 보였다
+        if (titleStyle != null && styledFor == Screen.height) return;
+        styledFor = Screen.height;
+        float k = Mathf.Clamp(Screen.height / 1080f, 0.6f, 2f);
 
         // **공용 스킨을 건드리지 않는다.** 예전엔 `GUI.skin.label.fontSize` 를 바꿨는데,
         // 다른 OnGUI 창들도 같은 스킨을 써서 누가 먼저 그리느냐에 따라 글자 크기가 바뀌었다
         titleStyle = new GUIStyle(GUI.skin.label);
         titleStyle.font = titleFont != null ? titleFont : labelFont;
-        titleStyle.fontSize = 17;
+        titleStyle.fontSize = Mathf.RoundToInt(17 * k);
         titleStyle.fontStyle = titleFont != null ? FontStyle.Normal : FontStyle.Bold;
         titleStyle.alignment = TextAnchor.MiddleCenter;
         titleStyle.normal.textColor = new Color(0.96f, 0.92f, 0.82f);
@@ -972,7 +981,7 @@ public class RecipeDisplay : MonoBehaviour
 
         lineStyle = new GUIStyle(titleStyle);
         lineStyle.font = labelFont;
-        lineStyle.fontSize = 14;
+        lineStyle.fontSize = Mathf.RoundToInt(14 * k);
         lineStyle.fontStyle = FontStyle.Bold;
         lineStyle.richText = true;
         lineStyle.normal.textColor = new Color(0.78f, 0.80f, 0.86f);
@@ -982,12 +991,12 @@ public class RecipeDisplay : MonoBehaviour
         shadowStyle.normal.textColor = new Color(0f, 0f, 0f, 0.9f);
 
         headStyle = new GUIStyle(titleStyle);
-        headStyle.fontSize = 22;
+        headStyle.fontSize = Mathf.RoundToInt(22 * k);
 
         timesStyle = new GUIStyle(titleStyle);
         timesStyle.font = labelFont;
         timesStyle.fontStyle = FontStyle.Bold;
-        timesStyle.fontSize = 18;
+        timesStyle.fontSize = Mathf.RoundToInt(18 * k);
         timesStyle.normal.textColor = arrowColor;
     }
 
@@ -1047,7 +1056,7 @@ public class RecipeDisplay : MonoBehaviour
         if (p.kind == PlateKind.Times)
         {
             Vector2 sz = timesStyle.CalcSize(new GUIContent(p.title));
-            Rect r = new Rect(x, y - sz.y * 0.5f, sz.x, sz.y);
+            Rect r = new Rect(p.anchor == TextAnchor.MiddleRight ? x - sz.x : x, y - sz.y * 0.5f, sz.x, sz.y);
             if (r.yMin < top || r.yMax > bottom) return;
             Shadowed(r, p.title, timesStyle);
             return;
