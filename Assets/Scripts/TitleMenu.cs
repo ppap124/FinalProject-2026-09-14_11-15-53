@@ -153,8 +153,8 @@ public class TitleMenu : MonoBehaviour
             li.color = new Color(goldText.r, goldText.g, goldText.b, 0.55f);
             li.raycastTarget = false;
         }
-        Text tag = Label(logo, "신들이 혼돈에 맞선다", 22, new Color(0.88f, 0.86f, 0.80f), TextAnchor.MiddleCenter, false);
-        Place(tag.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -192f), new Vector2(240f, 30f));
+        Text tag = Label(logo, "사라지는 세계를 막아라", 22, new Color(0.88f, 0.86f, 0.80f), TextAnchor.MiddleCenter, false);
+        Place(tag.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -192f), new Vector2(270f, 30f));
 
         // ── 메뉴 — 아래 3분의 1, 그림이 어둡게 비워 둔 자리 ──
         menu = Rect("Menu", root, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 70f), new Vector2(320f, 360f));
