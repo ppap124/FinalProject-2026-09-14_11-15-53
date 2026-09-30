@@ -14,6 +14,25 @@ public class Monster : MonoBehaviour
     [Tooltip("길 가운데선에서 비킨 거리(+ 바깥 · - 안쪽). 길이 넓어 몹이 여러 줄로 걷는다. Init 전에 넣는다")]
     public float lane;
     [HideInInspector] public int bossRound;
+    /// <summary>몹 이름 (MonsterArt 의 label) — 보스 체력바 위에 쓴다</summary>
+    [HideInInspector] public string displayName = "";
+
+    /// <summary>
+    /// 길을 걷지 않고 제자리에 떠 있다 — 카오스(벽 너머 하늘의 눈). 밀치기 · 혼란도 안 먹는다.
+    /// 사거리 밖이라 `GameLoop.Everywhere` 가 모든 유닛 · 스킬의 사거리 안으로 쳐 준다
+    /// </summary>
+    [HideInInspector] public bool anchored;
+    /// <summary>몸 반지름. 0 보다 크면 발사체가 중심이 아니라 **겉면**에서 터진다 (거대한 눈 속으로 파고들지 않게)</summary>
+    [HideInInspector] public float hitRadius;
+
+    /// <summary>`from` 쪽에서 봤을 때 몸 겉면의 점. hitRadius 가 0 이면 중심</summary>
+    public Vector3 SurfacePoint(Vector3 from)
+    {
+        Vector3 c = transform.position;
+        if (hitRadius <= 0f) return c;
+        Vector3 d = from - c;
+        return d.sqrMagnitude < 0.0001f ? c : c + d.normalized * hitRadius;
+    }
 
     // 감속 (사제 계열)
     float slowMult = 1f;
@@ -150,6 +169,7 @@ public class Monster : MonoBehaviour
     {
         // 시체는 걷지 않는다. 죽는 동작이 끝날 때까지 남아 있을 뿐이다
         if (dying) return;
+        if (anchored) return;   // 카오스 — 움직임은 ChaosBoss 가 맡는다
         if (route == null || route.Count == 0) return;
 
         // 감속 만료
@@ -304,7 +324,7 @@ public class Monster : MonoBehaviour
     /// </summary>
     public void Knockback(float distance)
     {
-        if (dying || distance <= 0f || route == null || route.Count == 0 || emergeT >= 0f) return;
+        if (dying || anchored || distance <= 0f || route == null || route.Count == 0 || emergeT >= 0f) return;
         if (isBoss) distance *= bossStunMult;
 
         int prev = (targetIndex - dir + route.Count) % route.Count;
@@ -316,7 +336,7 @@ public class Monster : MonoBehaviour
     /// <summary>혼란. 경로를 거꾸로 가게 한다 — 사거리 안에 그만큼 오래 머문다.</summary>
     public void Confuse(float duration)
     {
-        if (duration <= 0f || route == null || route.Count == 0) return;
+        if (duration <= 0f || anchored || route == null || route.Count == 0) return;
 
         if (dir > 0)
         {
@@ -347,7 +367,8 @@ public class Monster : MonoBehaviour
         // 죽는 동작이 보이려면 바로 지우면 안 된다. 다만 **클립이 없으면
         // 기다릴 이유도 없다** — 애니메이터가 없는 채로 늦추면 시체가 멀쩡히
         // 선 채로 남아 있다가 사라진다
-        float wait = (anim != null && anim.Ready) ? deathLinger : 0f;
+        // 카오스는 눈이 떨다 꺼지고 발톱이 흩어지는 동안 남는다 (ChaosBoss.Dying)
+        float wait = anchored ? 2.6f : (anim != null && anim.Ready) ? deathLinger : 0f;
         Destroy(gameObject, wait);
     }
 }

@@ -315,6 +315,67 @@ MonoBehaviour:
   slot: {fileID: 21300000, guid: 1c99ec9496628d645a25c215eb1138bb, type: 3}
   divider: {fileID: 21300000, guid: 8ac49c316d867c242aa3f5f3dd527f91, type: 3}
   iconHidden: {fileID: 21300000, guid: d234d356d83290841b000145fb851e91, type: 3}
+  codexPortraits:
+  - {fileID: 21300000, guid: 111dcdfdbfaee124ebc6078306ab5f6f, type: 3}
+  - {fileID: 21300000, guid: 44583d7b0eee9f94a8f46a3ec3fec955, type: 3}
+  - {fileID: 21300000, guid: f82a0531193db53448c6dfb37634e0cd, type: 3}
+  - {fileID: 21300000, guid: 6262537ec1c02644ba8a4a4356cd93ba, type: 3}
+  - {fileID: 21300000, guid: 49cd6954e5253ae48bf695d947887518, type: 3}
+  - {fileID: 21300000, guid: 1123593cec1c8b44fb4a89993a1efaf6, type: 3}
+  - {fileID: 21300000, guid: 28135106764815f4b8fe09877f8908e6, type: 3}
+  - {fileID: 21300000, guid: 316fc2d9626588545a9f43727d8f8dcf, type: 3}
+  - {fileID: 21300000, guid: 932b5a5f6cd567c4789f3815fbdfc61f, type: 3}
+  - {fileID: 21300000, guid: 7d5db244c5332344ca0baf838dd64f77, type: 3}
+  - {fileID: 21300000, guid: d34b0658f185a194ab5deda2f1523048, type: 3}
+  - {fileID: 21300000, guid: 4c3f401c32d1c8045873975e2679dd6a, type: 3}
+  - {fileID: 21300000, guid: 342083e3672d18949a69e7f70dab4f33, type: 3}
+  - {fileID: 21300000, guid: eecd80154c4bc3a45ab6c3bf3efc07ac, type: 3}
+  - {fileID: 21300000, guid: 5b031edf1afdfa74a9e83f8a4ddb6c5b, type: 3}
+  - {fileID: 21300000, guid: 18e4e929e96d3b24c8df933ce8cc6eac, type: 3}
+  - {fileID: 21300000, guid: 6183247f5fcf5f845817b69c065cadc3, type: 3}
+  - {fileID: 21300000, guid: 303b41ac99beaf5418a755092981b436, type: 3}
+  - {fileID: 21300000, guid: 18ea034491ea5c54494882a0457d6375, type: 3}
+  - {fileID: 21300000, guid: 914594d259b89254cad93e29509cf911, type: 3}
+  - {fileID: 21300000, guid: 14745d759e688f24db6fe9b54879de75, type: 3}
+  - {fileID: 21300000, guid: 30ce4d68a71dbee459cda3d23cedff2a, type: 3}
+  - {fileID: 21300000, guid: 9ba1db44d1b30994ebc287d9e7dc9750, type: 3}
+  - {fileID: 21300000, guid: 1150ded8e501cae4b8aa9e58211389a6, type: 3}
+  - {fileID: 21300000, guid: 7de048588321e494ebc0e272fa6c6c52, type: 3}
+  - {fileID: 21300000, guid: 1ce661d446195bb499ffc35725f2cb02, type: 3}
+  - {fileID: 21300000, guid: c6fdc5482f7a66444aff8b205d0ed54a, type: 3}
+  codexSkills:
+  - {fileID: 21300000, guid: 66c0945357e5f8840a9afcb9005612c9, type: 3}
+  - {fileID: 21300000, guid: eab2bbaf4d17cce4cb24fe6df2ab32b5, type: 3}
+  - {fileID: 21300000, guid: 9a29358b27e9638499305994ac23ff62, type: 3}
+  - {fileID: 21300000, guid: b14b82e5e20e3cb459f0e91a41e526f1, type: 3}
+  - {fileID: 21300000, guid: 83c93b0a950553e4e8a98a7bbfa73cf7, type: 3}
+  - {fileID: 21300000, guid: a259e6a5b9384f94c98c64d9be16f3b9, type: 3}
+  - {fileID: 21300000, guid: e7566c69b8695b9489e7356cf9b6f703, type: 3}
+  - {fileID: 21300000, guid: b2b46205fdbaeea44b69b047352c19e5, type: 3}
+  - {fileID: 21300000, guid: 7d2ae4c03426d7b4a880567e41849da4, type: 3}
+  - {fileID: 21300000, guid: a913ed89e6c893f4580edd38fc8ca517, type: 3}
+  - {fileID: 21300000, guid: bcf333342465a6e45a9878d062c65626, type: 3}
+  - {fileID: 21300000, guid: 2747d5a34be1c0e49803102ef1e75843, type: 3}
+  - {fileID: 21300000, guid: 2fbb370b8ffcf674f8ab2857bb2ab504, type: 3}
+  - {fileID: 21300000, guid: bbef91a5620d1cc4eaa46b49006fd4a8, type: 3}
+  - {fileID: 21300000, guid: 1dc9415beb24dc64994c0503452ccae4, type: 3}
+  - {fileID: 21300000, guid: ae7ac057b3fb8d34b906033b28960d27, type: 3}
+  - {fileID: 21300000, guid: 779228c43f14afc43beb7bea71ceb692, type: 3}
+  - {fileID: 21300000, guid: ff72a8d31a7dde04baaa1e655dc24687, type: 3}
+  - {fileID: 21300000, guid: db257a2ae9505234ab75a15ad896355f, type: 3}
+  - {fileID: 21300000, guid: f63553e7b3933944b802ee514473521a, type: 3}
+  - {fileID: 21300000, guid: f298f1b41b2314f438e0e606cb1fd0a6, type: 3}
+  - {fileID: 21300000, guid: ed8ebb4c90c37cc469d16c5e306a621e, type: 3}
+  - {fileID: 21300000, guid: ac5dbf871e0ade048b820cc77f2a6dc8, type: 3}
+  - {fileID: 21300000, guid: 6ce1e28704bb846448cdf0ca7ca7af26, type: 3}
+  codexCard: {fileID: 21300000, guid: 847a2190f18c5204cab0cab5dfedfd0e, type: 3}
+  codexSealed: {fileID: 21300000, guid: 3a29bae279569d446b82c8ad1b45cf70, type: 3}
+  codexPlaque: {fileID: 21300000, guid: 53f209910a99c4a4a883c4a17c756b32, type: 3}
+  codexSeal: {fileID: 21300000, guid: ded489c61c7c50a4887457df5b7d66e1, type: 3}
+  codexMaterialIcons:
+  - {fileID: 21300000, guid: 704cffe0b6d9f2f4181182dfb7fd5ac7, type: 3}
+  - {fileID: 21300000, guid: 5d82e3937ae95f946986f496ba8e7c4c, type: 3}
+  - {fileID: 21300000, guid: 678592c279cd7514493bbc0348850e0b, type: 3}
   font: {fileID: 12800000, guid: 9e4bf945c0e0a47499a6b0dc54ef1ce2, type: 3}
   fontBold: {fileID: 12800000, guid: 57a8e0d34862d8c4cbf49083cb2cb988, type: 3}
   fontTitle: {fileID: 12800000, guid: 2c21470536a74694b9ef7e53ff9fb1a9, type: 3}

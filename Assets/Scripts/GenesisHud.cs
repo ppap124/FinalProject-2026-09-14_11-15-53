@@ -41,6 +41,8 @@ public partial class GenesisHud : MonoBehaviour
     public Sprite emblemVictory, emblemDefeat;
     [Tooltip("위 띠 — 명판(9분할, 양 끝 금세공), 게이지 틀(9분할, 테두리 = 창 자리), 자원 받침")]
     public Sprite topPlaque, gaugeFrame, resSocket;
+    [Tooltip("몹 머리 위 체력바 틀 (VARCO, 9분할 — 테두리가 곧 창 자리). MonsterBars 가 쓴다")]
+    public Sprite barBoss, barChaos, barMob;
 
     [Tooltip("유닛 초상화 그림. 이름이 `Portrait_<UnitType>` 이어야 한다. 없는 유닛은 실제 모델을 비춘다")]
     public Sprite[] unitPortraits;
@@ -154,6 +156,7 @@ public partial class GenesisHud : MonoBehaviour
         HandlesEscape = true;
         Build();
         BuildPortraitStage();
+        if (GetComponent<MonsterBars>() == null) gameObject.AddComponent<MonsterBars>();   // 몹 머리 위 체력바
 
         if (GameLoop.Instance != null) GameLoop.Instance.Ended += OnEnded;
         UnitCombiner.HiddenFound += OnHiddenFound;
@@ -314,7 +317,7 @@ public partial class GenesisHud : MonoBehaviour
         // ── 왼쪽: 명판 위에 라운드 · 단계 칩 · 시간 ──
         // 명판은 바르코로 뽑은 9분할 — 양 끝 금세공은 제 모양 그대로, 가운데 곧은 테만 늘어난다
         float cap = 24f;   // 명판이 없을 때의 안쪽 여백
-        const float leftW = 520f;   // 라운드 · 단계 · 시간 · 인구
+        const float leftW = 600f;   // 라운드 · 단계 · 시간 · 인구 · 난이도
         if (topPlaque != null)
         {
             RectTransform lp = Rect("PlaqueL", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
@@ -337,6 +340,21 @@ public partial class GenesisHud : MonoBehaviour
         // 인구수 — 필드 유닛 / 상한. 가득 차면 붉게 (유닛 패드가 영혼을 안 받는다)
         popText = Label(p, "", 18, textColor, TextAnchor.MiddleLeft, true);
         Place(popText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 280f, mid), new Vector2(110f, 32f));
+
+        // 난이도 칩 — 테두리만 난이도 색, 글자도 같은 색. 판 내내 변하지 않으니 여기서 한 번 칠한다
+        GameLoop dgl = GameLoop.Instance;
+        GenesisDifficulty.Level dl = dgl != null ? dgl.Difficulty : GenesisDifficulty.Selected;
+        Color dc = GenesisDifficulty.Tint(dl);
+        RectTransform dchip = Rect("Difficulty", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                                   new Vector2(8f + cap + 386f, mid), new Vector2(70f, 24f));
+        Image dbg = dchip.gameObject.AddComponent<Image>();
+        dbg.color = new Color(dc.r * 0.28f, dc.g * 0.28f, dc.b * 0.28f, 0.95f);
+        dbg.raycastTarget = false;
+        Outline dol = dchip.gameObject.AddComponent<Outline>();
+        dol.effectColor = new Color(dc.r, dc.g, dc.b, 0.85f);
+        dol.effectDistance = new Vector2(1f, -1f);
+        Text dt = Label(dchip, GenesisDifficulty.Name(dl), 15, dc, TextAnchor.MiddleCenter, true);
+        Place(dt.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(70f, 24f));
 
         // ── 가운데: 필드 게이지 (최종전에는 카오스 체력) ──
         // 게이지 틀은 9분할이고 **테두리가 곧 창 자리**다 (UISpriteCutter.GaugeFrame 이 창을 재서 넣었다).
@@ -850,6 +868,9 @@ public partial class GenesisHud : MonoBehaviour
         resultTitle.color = won ? goldText : new Color(0.95f, 0.45f, 0.55f);
         resultReason.text = won ? "카오스가 부서지고, 세계는 다시 이어집니다."
                                 : gl.OverReason;   // 라운드는 아래 기록 줄에 있다 — 두 번 쓰지 않는다
+        // 어느 난이도였는지 — 기록이 난이도마다 따로라 결과 창에서도 밝힌다
+        resultReason.text = "<color=#" + ColorUtility.ToHtmlStringRGB(GenesisDifficulty.Tint(gl.Difficulty)) + ">"
+                          + GenesisDifficulty.Name(gl.Difficulty) + "</color>  ·  " + resultReason.text;
 
         int secs = Mathf.FloorToInt(gl.PlayTime);
         string time = (secs / 60) + "분 " + (secs % 60).ToString("00") + "초";
@@ -867,7 +888,9 @@ public partial class GenesisHud : MonoBehaviour
         {
             string line;
             if (rec.firstWin)
-                line = "<color=#ffd873>★ 첫 클리어!  카오스 처치 " + GenesisRecords.Clock(gl.ChaosFightTime) + "</color>";
+                line = "<color=#ffd873>★ 첫 클리어!  카오스 처치 " + GenesisRecords.Clock(gl.ChaosFightTime) + "</color>"
+                     + (rec.unlocked ? "   <color=#" + ColorUtility.ToHtmlStringRGB(GenesisDifficulty.Tint(rec.opened)) + "><b>"
+                                       + GenesisDifficulty.Name(rec.opened) + "</b> 난이도가 열렸습니다</color>" : "");
             else if (rec.newChaos)
                 line = "<color=#ffd873>★ 최단 카오스 처치 " + GenesisRecords.Clock(gl.ChaosFightTime)
                      + "</color>  <color=#9aa0b8>(이전 " + GenesisRecords.Clock(rec.prevChaos) + ")</color>";
@@ -891,7 +914,7 @@ public partial class GenesisHud : MonoBehaviour
     /// 기록(`Monster.DamageLog`)은 출처 이름으로 쌓인다: 평타는 "평타 · 이름", 스킬은 스킬 이름.
     /// 스킬 이름을 그 스킬을 가진 유닛으로 되돌려 평타와 합친다 — "무엇을 키웠어야 했나"는 유닛 단위로 읽힌다
     /// </summary>
-    static string DamageRanking(int n)
+    public static string DamageRanking(int n)
     {
         if (Monster.DamageLog.Count == 0) return "";
 
@@ -1114,9 +1137,28 @@ public partial class GenesisHud : MonoBehaviour
         // 끝이 다가오면 빨갛게 — 준비 시간은 느긋해도 되므로 빼고
         timeText.color = !gl.InPrep && (boss || final) && left <= 20 ? new Color(1f, 0.42f, 0.36f) : textColor;
 
-        // ── 가운데: 필드 게이지. 최종전은 카오스 체력 ──
+        // ── 가운데: 필드 게이지. 최종전은 카오스 체력, 보스가 살아 있으면 보스 체력 ──
+        // 보스는 "N라운드 안에 못 잡으면 패배"라 남은 체력이 안 보이면 갑자기 지는 것처럼 느껴졌다
+        Monster due = null;
+        if (!final)
+            foreach (Monster b in gl.Bosses)
+                if (b != null && !b.IsDying && (due == null || b.bossRound < due.bossRound)) due = b;
+
         float f;
-        if (final && gl.Chaos != null)
+        if (due != null)
+        {
+            f = due.HpRatio;
+            int deadline = due.bossRound + gl.bossGraceRounds;
+            bool last = gl.Round >= deadline;
+            gaugeLabel.text = "보스";
+            gaugeFill.color = new Color(0.95f, 0.30f, 0.18f);
+            gaugeText.color = last ? new Color(1f, 0.45f, 0.40f) : textColor;
+            gaugeText.text = Mathf.CeilToInt(f * 100f) + "%   <size=15><color=#" + (last ? "ff7a6e" : "9aa0b8") + ">"
+                           + (last ? "이번 라운드까지" : deadline + "라운드까지")
+                           // 칸이 200 이라 필드 수까지 쓰면 넘친다 — 필드가 절반을 넘어 위험할 때만 덧붙인다
+                           + (gl.AliveCount >= gl.fieldLimit / 2 ? " · 필드 " + gl.AliveCount : "") + "</color></size>";
+        }
+        else if (final && gl.Chaos != null)
         {
             f = gl.Chaos.HpRatio;
             gaugeLabel.text = "카오스";
@@ -1568,30 +1610,37 @@ public partial class GenesisHud : MonoBehaviour
 
         for (int i = 0; i < slots.Count - 1; i++) ClearSlot(slots[i]);
 
-        // 히든 — 서로 다른 1단계 둘을 고르면 "무언가 반응한다". 조합표에 없는 조합이라
-        // 처음엔 이름을 숨기고(???), 재료가 있을 때만 누를 수 있다. 무슨 재료인지는 안 알려 준다
+        // 히든 — 서로 다른 1단계 둘을 고르면 "무언가 반응한다". 짝마다 재료 셋 = 히든 셋이라
+        // Q W E 에 재료별로 한 칸씩 (재료 표시가 붙는다). 못 찾은 것은 이름을 숨기고(???),
+        // 그 재료가 있을 때만 누를 수 있다. 무엇이 나올지는 도감 힌트로 짐작한다
         if (units == 2 && souls == 0 && UnitControl.Instance != null)
         {
             Unit a = UnitControl.Instance.SelectedAt(0), b = UnitControl.Instance.SelectedAt(1);
-            UnitTable.Hidden h;
-            if (a != null && b != null && UnitTable.TryHidden(a.type, b.type, out h))
+            if (a != null && b != null && UnitTable.IsHiddenPair(a.type, b.type))
             {
-                bool known = UnitTable.Discovered(h.result);
-                bool haveMat = MaterialBank.Instance != null && MaterialBank.Instance.Get(h.material) >= 1;
-                string rn = UnitTable.Get(h.result).name;
-                Sprite art;
-                if (!known || !portraitMap.TryGetValue("Portrait_" + h.result, out art)) art = iconHidden != null ? iconHidden : iconCombine;
-                SetSlot(slots[0], art, known ? CultureIcon(h.material) : null, known ? rn : "???",
-                        known ? rn + " 조합  (히든)" : "무언가 반응합니다",
-                        known
-                            ? UnitTable.Get(a.type).name + " + " + UnitTable.Get(b.type).name + " + " + MaterialTable.Name(h.material) + " 재료 1개\n조합표에 없는 유닛. 시너지를 받지 않고 더 조합되지 않습니다." +
-                              (haveMat ? "" : "\n<color=#ff7a6a>" + MaterialTable.Name(h.material) + " 필요</color>")
-                            : "두 유닛이 서로 반응합니다. 조합표에 없는 무언가가 나올 것 같습니다." +
-                              (haveMat ? "\n<color=#8aff9a>지금 가진 재료 하나가 함께 떨고 있습니다.</color>"
-                                       : "\n<color=#ff7a6a>아직 무언가가 모자랍니다 — 어떤 재료일까요?</color>"),
-                        haveMat,
-                        () => { UnitCombiner.Instance.CombineHidden(a, b); UnitControl.Instance.ClearSelection(); });
-                hintText.text = "두 유닛이 서로 반응합니다…";
+                int n = 0;
+                foreach (Culture mat in MaterialTable.All)
+                {
+                    UnitTable.Hidden h;
+                    if (!UnitTable.TryHidden(a.type, b.type, mat, out h) || n >= slots.Count - 2) continue;
+                    Culture m = mat;
+                    bool known = UnitTable.Discovered(h.result);
+                    bool haveMat = MaterialBank.Instance != null && MaterialBank.Instance.Get(m) >= 1;
+                    string rn = UnitTable.Get(h.result).name;
+                    Sprite art;
+                    if (!known || !portraitMap.TryGetValue("Portrait_" + h.result, out art)) art = iconHidden != null ? iconHidden : iconCombine;
+                    SetSlot(slots[n++], art, CultureIcon(m), known ? rn : "???",
+                            known ? rn + " 조합  (히든)" : MaterialTable.Name(m) + " — 무언가 반응합니다",
+                            known
+                                ? UnitTable.Get(a.type).name + " + " + UnitTable.Get(b.type).name + " + " + MaterialTable.Name(m) + " 재료 1개\n조합표에 없는 유닛. 시너지를 받지 않고 더 조합되지 않습니다." +
+                                  (haveMat ? "" : "\n<color=#ff7a6a>" + MaterialTable.Name(m) + " 필요</color>")
+                                : "두 유닛이 " + MaterialTable.Name(m) + "에 반응합니다. 조합표에 없는 무언가가 나올 것 같습니다.\n" +
+                                  "<color=#9aa0b8>타이틀 도감에 힌트가 있습니다.</color>" +
+                                  (haveMat ? "" : "\n<color=#ff7a6a>" + MaterialTable.Name(m) + " 필요</color>"),
+                            haveMat,
+                            () => { UnitCombiner.Instance.CombineHidden(a, b, m); UnitControl.Instance.ClearSelection(); });
+                }
+                hintText.text = "두 유닛이 서로 반응합니다… 재료마다 다른 것이 나옵니다.";
             }
         }
 

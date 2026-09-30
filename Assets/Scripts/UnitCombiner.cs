@@ -264,11 +264,11 @@ public class UnitCombiner : MonoBehaviour
     /// <summary>
     /// 히든 조합 — 서로 다른 1단계 둘 + 재료. 결과는 a 자리에 나오고, 처음이면 이름이 풀린다
     /// </summary>
-    public bool CombineHidden(Unit a, Unit b)
+    public bool CombineHidden(Unit a, Unit b, Culture material)
     {
         if (a == null || b == null || a == b) return false;
         UnitTable.Hidden h;
-        if (!UnitTable.TryHidden(a.type, b.type, out h)) return false;
+        if (!UnitTable.TryHidden(a.type, b.type, material, out h)) return false;
         if (MaterialBank.Instance == null || !MaterialBank.Instance.TrySpend(h.material, 1)) return false;
 
         Vector3 at = a.transform.position;

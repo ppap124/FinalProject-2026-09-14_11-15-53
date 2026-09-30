@@ -773,12 +773,41 @@ public class MapDecor : MonoBehaviour
     [Tooltip("보도 교차점 광장 지름")]
     public float plazaDiameter = 7f;
 
+    [Tooltip("테라스 둘레 석조 기단 (두 단). 판이 바위 위에 얹은 철판처럼 보이던 것을 받침돌로")]
+    public bool plinth = true;
+    [Tooltip("기단 위 단 높이 — 테라스 폭 그대로")]
+    public float plinthUpper = 2.6f;
+    [Tooltip("기단 아래 단 높이 — plinthInset 만큼 들여서")]
+    public float plinthLower = 2.2f;
+    public float plinthInset = 1.8f;
+    [Tooltip("뿌리 바위 윗면을 기단 밑바닥보다 이만큼 위로 — 파묻어 이음매를 없앤다")]
+    public float rockEmbed = 0.6f;
+    [Tooltip("기단 돌 무늬 (마름돌). 비우면 단색")]
+    public Texture2D plinthTex;
+    public Texture2D plinthNormalTex;
+    public Color plinthTint = new Color(0.82f, 0.86f, 0.96f);
+    [Tooltip("돌 무늬 한 장이 덮는 월드 크기")]
+    public float plinthTileSize = 4.5f;
+    [Range(0f, 1f)]
+    [Tooltip("돌 무늬 자체 발광 — 카메라 쪽(남) 벽은 늘 그늘이라")]
+    public float plinthGlow = 0.28f;
+
     [Tooltip("테라스 밑에 매달 바위. 비우면 floatingIsle")]
     public GameObject foundationRock;
 
     [Tooltip("바위 크기 = 테라스 크기 × 이 값 (가로), 높이는 따로")]
     public float rockSpread = 1.1f;
+    [Tooltip("rockDepth 가 0 일 때 쓰는 옛 방식 — 세로 배율 그대로")]
     public float rockHeight = 50f;
+    [Tooltip("뿌리 바위 깊이 (월드). 0 이면 rockHeight 배율. 모델마다 원래 크기가 달라 월드로 맞춘다")]
+    public float rockDepth = 0f;
+    [Tooltip("뿌리 바위를 돌리는 각도 — 모델의 잘생긴 면을 카메라(남쪽) 쪽으로")]
+    public float rockYaw = 0f;
+    [Tooltip("세로 배율 = 가로 배율 × 이 값 (1 = 모델 비율 그대로). rockDepth 가 상한")]
+    public float rockStretchY = 0.8f;
+    [Tooltip("곁뿌리 모델 — 가장자리 아래에 섞어 실루엣을 깬다")]
+    public GameObject[] rockExtras;
+    public int rockExtraCount = 6;
 
     [Range(0.1f, 1f)]
     [Tooltip("바위 밝기. 늘어난 텍스처가 흐릿해서 어둡게 눌러 둔다")]
@@ -3489,7 +3518,7 @@ public class MapDecor : MonoBehaviour
         float sx = all.size.x + terraceMargin * 2f, sz = all.size.z + terraceMargin * 2f;
         Transform f = Group("Foundation", c);
 
-        const float thick = 0.4f;
+        const float thick = TerraceThick;
         GameObject terrace = Slab(f, "Terrace", new Vector3(0f, terraceY - thick * 0.5f, 0f), new Vector3(sx, thick, sz),
                                   starChannel ? "starWater" : "ledge");
         if (starChannel)
@@ -3523,6 +3552,18 @@ public class MapDecor : MonoBehaviour
 
         Walkways(f);
         Bridges(f);
+        Underside(f, sx, sz, thick);
+    }
+
+    const float TerraceThick = 0.4f;
+
+    /// <summary>
+    /// 기반 밑 — 석조 기단 + 뿌리 바위. `Foundation` 이 부르고, `RebuildUnderside` 가 이것만 다시 짓는다
+    /// (다리 · 보도처럼 손으로 맞췄을 수 있는 건 건드리지 않는다).
+    /// </summary>
+    void Underside(Transform f, float sx, float sz, float thick)
+    {
+        float below = plinth ? Plinth(f, sx, sz, thick) : 0f;
 
         GameObject rockSrc = foundationRock != null ? foundationRock : floatingIsle;
         if (rockSrc == null) return;
@@ -3531,16 +3572,137 @@ public class MapDecor : MonoBehaviour
         rock.name = "FoundationRock";
         StripColliders(rock);
         rock.transform.localPosition = Vector3.zero;
-        rock.transform.localScale = new Vector3(sx * rockSpread, rockHeight, sz * rockSpread);
+        rock.transform.localRotation = Quaternion.Euler(0f, rockYaw, 0f);
 
+        float topY = plinth ? terraceY - thick - below + rockEmbed : terraceY - thick - 0.2f;
         Bounds rb;
+        if (rockDepth > 0f && TryWorldBounds(rock, out rb) && rb.size.y > 0.001f)
+        {
+            // **월드 크기로 맞추되 세로는 모델 비율대로** — 정비율 모델을 가로 170 · 세로 100 으로 눌렀더니
+            // 무늬가 가로로 늘어나 매끈한 검은 덩어리가 됐다. 세로 = 가로 배율 × rockStretchY
+            Vector3 s = rock.transform.localScale;
+            float kx = sx * rockSpread / rb.size.x, kz = sz * rockSpread / rb.size.z;
+            float ky = Mathf.Min(rockDepth / rb.size.y, Mathf.Max(kx, kz) * rockStretchY);
+            rock.transform.localScale = new Vector3(s.x * kx, s.y * ky, s.z * kz);
+        }
+        else rock.transform.localScale = new Vector3(sx * rockSpread, rockHeight, sz * rockSpread);
+
         if (TryWorldBounds(rock, out rb))
         {
             // 가로 중심과 윗면을 맞춘다 — 피벗이 모델마다 다르다
-            Vector3 off = new Vector3(f.position.x - rb.center.x, terraceY - thick - 0.2f - rb.max.y, f.position.z - rb.center.z);
+            // 기단이 있으면 그 밑바닥에 붙인다 (살짝 파묻어 이음매를 없앤다)
+            Vector3 off = new Vector3(f.position.x - rb.center.x, topY - rb.max.y, f.position.z - rb.center.z);
             rock.transform.position += off;
         }
         if (rockDim < 0.999f) DullProp(rock, rockDim);
+
+        // 곁뿌리 — 큰 뿌리 하나만이면 밑이 매끈한 원뿔이다. 가장자리 아래에 작은 뿌리를 몇 개 섞어
+        // 실루엣을 울퉁불퉁하게. 번호로 자리 · 크기 · 방향을 정해 다시 지어도 같다
+        if (rockExtras == null || rockExtras.Length == 0 || rockExtraCount <= 0) return;
+        for (int i = 0; i < rockExtraCount; i++)
+        {
+            GameObject src = rockExtras[i % rockExtras.Length];
+            if (src == null) continue;
+            GameObject e = Instantiate(src, f);
+            e.name = "FoundationRock_" + i;
+            StripColliders(e);
+            e.transform.localPosition = Vector3.zero;
+            e.transform.localRotation = Quaternion.Euler(0f, Frac(i * 0.618f) * 360f, 0f);
+            Bounds eb;
+            if (!TryWorldBounds(e, out eb) || eb.size.x < 0.001f) continue;
+            float want = Mathf.Min(sx, sz) * Mathf.Lerp(0.22f, 0.38f, Frac(i * 0.4142f + 0.2f));
+            e.transform.localScale *= want / Mathf.Max(eb.size.x, eb.size.z);
+            // 테두리를 따라 고르게 — 각도로 돌며 타원 가장자리
+            float a = (i + 0.35f * Frac(i * 0.73f)) / rockExtraCount * Mathf.PI * 2f;
+            float rr = Mathf.Lerp(0.44f, 0.52f, Frac(i * 0.29f + 0.5f));   // 큰 뿌리 옆구리 밖으로 — 안쪽이면 묻혀 안 보였다
+            Vector3 at = f.position + new Vector3(Mathf.Cos(a) * sx * rr, 0f, Mathf.Sin(a) * sz * rr);
+            TryWorldBounds(e, out eb);
+            float drop = Mathf.Lerp(10f, 30f, Frac(i * 0.83f));   // 기단에 붙지 않고 밑에 매달린 바위처럼
+            e.transform.position += new Vector3(at.x - eb.center.x, topY - drop - eb.max.y, at.z - eb.center.z);
+            if (rockDim < 0.999f) DullProp(e, rockDim);
+        }
+    }
+
+    /// <summary>기단 · 뿌리 바위만 다시 짓는다 — 바위 모델이나 기단 값을 바꿨을 때</summary>
+    public void RebuildUnderside()
+    {
+        if (root == null) root = transform.Find("MapDecor");
+        Transform f = root != null ? root.Find("Foundation") : null;
+        Transform ter = f != null ? f.Find("Terrace") : null;
+        if (ter == null) { Debug.LogWarning("[맵] 기반(Foundation/Terrace)이 없다 — Build() 를 먼저"); return; }
+
+        // 블록 옆면 벽(Skirt)도 같은 돌로 — 화면에서 가장 크게 보이는 평평한 면이었다
+        for (int i = f.childCount - 1; i >= 0; i--)
+        {
+            Transform c = f.GetChild(i);
+            if (c.name.StartsWith("Plinth") || c.name.StartsWith("FoundationRock") || c.name.StartsWith("Skirt_"))
+            {
+                if (Application.isPlaying) Destroy(c.gameObject); else DestroyImmediate(c.gameObject);
+            }
+        }
+        if (starChannel) BlockSkirts(f);
+        Vector3 ts = ter.localScale;   // 테라스 판 = 기반 넓이
+        Underside(f, ts.x, ts.z, TerraceThick);
+    }
+
+    /// <summary>
+    /// 테라스 둘레 **석조 기단** — 두 단. 위 단은 테라스와 같은 폭으로 곧게 내려가고, 아래 단은 한 뼘 들여
+    /// 계단처럼 좁아진다. 두 단 사이 · 위 가장자리에 금 띠.
+    ///
+    /// 테라스는 두께 0.4 판이라 옆에서 보면 바위 위에 얹은 **철판**이었다. 판이 아니라 신전의 받침돌로
+    /// 읽히게 하고, 판과 뿌리 바위의 이음매도 가린다. 바닥면까지 막는다 — 아래에서 보면 속이 빈다.
+    /// 돌려주는 값은 테라스 밑면에서 기단 밑바닥까지 깊이.
+    /// </summary>
+    float Plinth(Transform f, float sx, float sz, float thick)
+    {
+        float top = terraceY - thick;                      // 테라스 밑면
+        float h1 = plinthUpper, h2 = plinthLower, ins = plinthInset;
+        float hx = sx * 0.5f, hz = sz * 0.5f, t = 1.2f;
+
+        // 위 단 — 테라스 가장자리 그대로
+        float y1 = top - h1 * 0.5f;
+        PlinthUV(Slab(f, "Plinth_N", new Vector3(0f, y1,  hz - t * 0.5f), new Vector3(sx, h1, t), "plinth"));
+        PlinthUV(Slab(f, "Plinth_S", new Vector3(0f, y1, -hz + t * 0.5f), new Vector3(sx, h1, t), "plinth"));
+        PlinthUV(Slab(f, "Plinth_E", new Vector3( hx - t * 0.5f, y1, 0f), new Vector3(t, h1, sz - t * 2f), "plinth"));
+        PlinthUV(Slab(f, "Plinth_W", new Vector3(-hx + t * 0.5f, y1, 0f), new Vector3(t, h1, sz - t * 2f), "plinth"));
+        // 위 가장자리 금 띠 — 테라스 둑(trim)과 돌 사이
+        float gy = top - 0.1f, gw = 0.18f;
+        Slab(f, "PlinthGold_N", new Vector3(0f, gy,  hz + gw * 0.5f - 0.05f), new Vector3(sx + gw * 2f, 0.14f, gw), "verge");
+        Slab(f, "PlinthGold_S", new Vector3(0f, gy, -hz - gw * 0.5f + 0.05f), new Vector3(sx + gw * 2f, 0.14f, gw), "verge");
+        Slab(f, "PlinthGold_E", new Vector3( hx + gw * 0.5f - 0.05f, gy, 0f), new Vector3(gw, 0.14f, sz), "verge");
+        Slab(f, "PlinthGold_W", new Vector3(-hx - gw * 0.5f + 0.05f, gy, 0f), new Vector3(gw, 0.14f, sz), "verge");
+
+        // 아래 단 — 한 뼘 들여서. 두 단 경계에 턱돌(wallCap) + 금 띠
+        float lx = hx - ins, lz = hz - ins, y2 = top - h1 - h2 * 0.5f;
+        PlinthUV(Slab(f, "PlinthLow_N", new Vector3(0f, y2,  lz - t * 0.5f), new Vector3(lx * 2f, h2, t), "plinth"));
+        PlinthUV(Slab(f, "PlinthLow_S", new Vector3(0f, y2, -lz + t * 0.5f), new Vector3(lx * 2f, h2, t), "plinth"));
+        PlinthUV(Slab(f, "PlinthLow_E", new Vector3( lx - t * 0.5f, y2, 0f), new Vector3(t, h2, lz * 2f - t * 2f), "plinth"));
+        PlinthUV(Slab(f, "PlinthLow_W", new Vector3(-lx + t * 0.5f, y2, 0f), new Vector3(t, h2, lz * 2f - t * 2f), "plinth"));
+        float sy = top - h1 - 0.12f;
+        Slab(f, "PlinthStep", new Vector3(0f, sy, 0f), new Vector3(sx - 0.02f, 0.24f, sz - 0.02f), "wallCap");
+        Slab(f, "PlinthStepGold_N", new Vector3(0f, sy - 0.2f,  lz + 0.04f), new Vector3(lx * 2f + 0.16f, 0.1f, 0.16f), "verge");
+        Slab(f, "PlinthStepGold_S", new Vector3(0f, sy - 0.2f, -lz - 0.04f), new Vector3(lx * 2f + 0.16f, 0.1f, 0.16f), "verge");
+        Slab(f, "PlinthStepGold_E", new Vector3( lx + 0.04f, sy - 0.2f, 0f), new Vector3(0.16f, 0.1f, lz * 2f), "verge");
+        Slab(f, "PlinthStepGold_W", new Vector3(-lx - 0.04f, sy - 0.2f, 0f), new Vector3(0.16f, 0.1f, lz * 2f), "verge");
+
+        // 밑바닥 — 아래에서 올려다봐도 속이 비지 않게
+        Slab(f, "PlinthFloor", new Vector3(0f, top - h1 - h2 + 0.1f, 0f), new Vector3(lx * 2f, 0.2f, lz * 2f), "wall");
+        return h1 + h2;
+    }
+
+    /// <summary>
+    /// 기단 벽 한 장의 돌 무늬 반복 — **바깥으로 보이는 면**(긴 면)의 폭 × 높이로.
+    /// 큐브의 옆면 UV 는 가로가 긴 축, 세로가 높이다. TileUV 에 남겨 리로드를 넘긴다
+    /// </summary>
+    void PlinthUV(GameObject g)
+    {
+        if (g == null || plinthTex == null) return;
+        Vector3 s = g.transform.lossyScale;
+        float w = Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.z)), tile = Mathf.Max(0.5f, plinthTileSize);
+        TileUV uv = g.GetComponent<TileUV>();
+        if (uv == null) uv = g.AddComponent<TileUV>();
+        uv.st = new Vector4(w / tile, Mathf.Abs(s.y) / tile, 0f, 0f);
+        uv.Apply();
     }
 
     /// <summary>
@@ -3790,10 +3952,10 @@ public class MapDecor : MonoBehaviour
             Vector3 c = f.InverseTransformPoint(new Vector3(b.center.x, 0f, b.center.z));
             float hx = b.extents.x - t * 0.5f, hz = b.extents.z - t * 0.5f, y = bottom + h * 0.5f;
             string k = "Skirt_" + n.Replace("Block_", "");
-            Slab(f, k + "_N", c + new Vector3(0f, y,  hz), new Vector3(b.size.x, h, t), "wall");
-            Slab(f, k + "_S", c + new Vector3(0f, y, -hz), new Vector3(b.size.x, h, t), "wall");
-            Slab(f, k + "_E", c + new Vector3( hx, y, 0f), new Vector3(t, h, b.size.z - t * 2f), "wall");
-            Slab(f, k + "_W", c + new Vector3(-hx, y, 0f), new Vector3(t, h, b.size.z - t * 2f), "wall");
+            PlinthUV(Slab(f, k + "_N", c + new Vector3(0f, y,  hz), new Vector3(b.size.x, h, t), plinthTex != null ? "plinth" : "wall"));
+            PlinthUV(Slab(f, k + "_S", c + new Vector3(0f, y, -hz), new Vector3(b.size.x, h, t), plinthTex != null ? "plinth" : "wall"));
+            PlinthUV(Slab(f, k + "_E", c + new Vector3( hx, y, 0f), new Vector3(t, h, b.size.z - t * 2f), plinthTex != null ? "plinth" : "wall"));
+            PlinthUV(Slab(f, k + "_W", c + new Vector3(-hx, y, 0f), new Vector3(t, h, b.size.z - t * 2f), plinthTex != null ? "plinth" : "wall"));
 
             // 수면 바로 위 금 띠 — 물과 벽의 경계
             float by = terraceY + 0.18f, bt = t + 0.12f;
@@ -4066,6 +4228,21 @@ public class MapDecor : MonoBehaviour
                     }
                     break;
                 case "recipeDais":  Set(m, Color.Lerp(trim, new Color(0.30f, 0.26f, 0.42f), 0.4f), 0.7f); break;
+                // 기단 석축 — 푸른 마름돌. 반복은 벽면마다 따로(PlinthUV) — 바닥용 TileTexture 는 x · z 로 재서 벽이 늘어난다
+                case "plinth":
+                    Set(m, plinthTint, 0.8f);
+                    if (plinthTex != null) m.SetTexture("_BaseMap", plinthTex);
+                    if (plinthNormalTex != null) { m.SetTexture("_BumpMap", plinthNormalTex); m.EnableKeyword("_NORMALMAP"); }
+                    // 해가 북쪽에서 들고 카메라는 남쪽에서 본다 — 카메라 쪽 벽은 늘 그늘이라 무늬가 묻혔다.
+                    // 무늬 자체를 은은하게 비춰 그늘에서도 마름돌이 읽히게 한다
+                    if (plinthTex != null && plinthGlow > 0f)
+                    {
+                        m.EnableKeyword("_EMISSION");
+                        m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                        m.SetTexture("_EmissionMap", plinthTex);
+                        m.SetColor("_EmissionColor", plinthTint * plinthGlow);
+                    }
+                    break;
                 // 제단 동심원. 밑색은 낮게 두고 발광으로만 보이게 한다 —
                 // 밑색을 올리면 낮에도 빛나는 페인트 자국으로 보인다
                 case "altarRing":   Set(m, altarRingColor * 0.25f, 0.2f);

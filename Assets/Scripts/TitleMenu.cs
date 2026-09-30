@@ -23,6 +23,12 @@ public class TitleMenu : MonoBehaviour
     [Header("그림")]
     public Sprite background;
     public Sprite panel, slot, divider, iconHidden;
+    [Tooltip("도감 — 유닛 초상화 (이름 Portrait_<UnitType>) · 스킬 아이콘 (Skill_<UnitType>). 게임 HUD 와 같은 그림")]
+    public Sprite[] codexPortraits, codexSkills;
+    [Tooltip("도감 히든 표 — 찾은 카드 틀 · 봉인 카드 틀 · 재료 머리 명판 (VARCO, 9분할 — 테두리가 곧 창 자리) · 봉인 문장")]
+    public Sprite codexCard, codexSealed, codexPlaque, codexSeal;
+    [Tooltip("재료 아이콘 — 그리스 · 북유럽 · 한국 순 (Icon_Greek · Icon_Norse · Icon_Korean)")]
+    public Sprite[] codexMaterialIcons;
 
     [Header("글꼴")]
     public Font font, fontBold, fontTitle, fontTitleHeavy;
@@ -161,16 +167,10 @@ public class TitleMenu : MonoBehaviour
         Text ver = Label(root, "Enter  게임 시작   ·   Esc  닫기", 16, new Color(dimText.r, dimText.g, dimText.b, 0.8f), TextAnchor.LowerRight, false);
         Place(ver.rectTransform, new Vector2(1f, 0f), new Vector2(-24f, 18f), new Vector2(600f, 24f));
 
-        // 최고 기록 — 왼쪽 아래, 오른쪽 단축키 줄과 짝. 한 판도 안 했으면 안 띄운다
-        if (GenesisRecords.Plays > 0)
-        {
-            string best = GenesisRecords.Wins > 0 ? "클리어 " + GenesisRecords.Wins + "회" : GenesisRecords.BestRound + "라운드";
-            string rec = "<color=#ffd873>최고 기록</color>   " + best
-                       + (GenesisRecords.BestChaos >= 0f ? "   ·   최단 카오스 " + GenesisRecords.Clock(GenesisRecords.BestChaos) : "")
-                       + "   ·   " + GenesisRecords.Plays + "판";
-            Text rt = Label(root, rec, 18, new Color(0.88f, 0.86f, 0.80f, 0.9f), TextAnchor.LowerLeft, true);
-            Place(rt.rectTransform, new Vector2(0f, 0f), new Vector2(24f, 16f), new Vector2(800f, 28f));
-        }
+        // 최고 기록 — 왼쪽 아래, 오른쪽 단축키 줄과 짝. 고른 난이도의 기록 (난이도를 바꾸면 다시 쓴다)
+        recordText = Label(root, "", 18, new Color(0.88f, 0.86f, 0.80f, 0.9f), TextAnchor.LowerLeft, true);
+        Place(recordText.rectTransform, new Vector2(0f, 0f), new Vector2(24f, 16f), new Vector2(900f, 28f));
+        RefreshRecord();
 
         BuildModal(root);
 
@@ -397,6 +397,7 @@ public class TitleMenu : MonoBehaviour
 
     void OpenModal(string title, string body)
     {
+        pickerOpen = false;
         modalTitle.text = title;
         modalBody.text = body;
         for (int i = modalContent.childCount - 1; i >= 0; i--)
@@ -408,29 +409,355 @@ public class TitleMenu : MonoBehaviour
 
     void CloseModal()
     {
+        pickerOpen = false;
         modal.gameObject.SetActive(false);
         menuGroup.interactable = true;
         menuGroup.alpha = 1f;
     }
 
-    void ShowCodex()
+    // ── 도감 — 탭 다섯 (1단계 · 그리스 · 북유럽 · 한국 · 히든), 줄마다 유닛 하나 ──
+    //    예전엔 히든 셋만 글자로 있었다. 고유 스킬은 게임 안에서 유닛을 골라야만 보였다
+
+    static readonly string[] CodexTabs = { "1단계", "그리스", "북유럽", "한국", "히든" };
+    static readonly UnitType[][] CodexUnits =
     {
+        new[] { UnitType.Warrior, UnitType.Archer, UnitType.Priest },
+        new[] { UnitType.Minotaur, UnitType.Harpy, UnitType.Oracle, UnitType.Titan, UnitType.Zeus },
+        new[] { UnitType.Berserker, UnitType.Valkyrie, UnitType.RuneWitch, UnitType.Jotunn, UnitType.Odin },
+        new[] { UnitType.Dokkaebi, UnitType.Dosa, UnitType.Gumiho, UnitType.Imugi, UnitType.Hwanung },
+        new[] { UnitType.Chiron, UnitType.Sigurd, UnitType.Hwarang, UnitType.Heracles, UnitType.Einherjar,
+                UnitType.Gangnim, UnitType.Odysseus, UnitType.Ullr, UnitType.Jumong },   // 히든 탭은 표로 따로 그린다 (CodexHiddenGrid)
+    };
+    static int codexTab;
+
+    void ShowCodex() { ShowCodexTab(codexTab); }
+
+    void ShowCodexTab(int tab)
+    {
+        codexTab = tab;
         int found = 0;
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        foreach (UnitTable.Hidden h in UnitTable.Hiddens)
+        foreach (UnitTable.Hidden h in UnitTable.Hiddens) if (UnitTable.Discovered(h.result)) found++;
+        OpenModal("도감", "");
+
+        // 탭 줄 — 누른 탭은 금색
+        const float tabW = 150f, tabH = 44f, gap = 10f;
+        float x0 = -(CodexTabs.Length * tabW + (CodexTabs.Length - 1) * gap) * 0.5f + tabW * 0.5f;
+        for (int i = 0; i < CodexTabs.Length; i++)
         {
-            bool known = UnitTable.Discovered(h.result);
-            if (known) found++;
-            UnitTable.Stats s = UnitTable.Get(h.result);
-            if (known)
-                sb.Append("<color=#ffd98a><b>" + s.name + "</b></color>   " +
-                          UnitTable.Get(h.a).name + " + " + UnitTable.Get(h.b).name + " + " + MaterialTable.Name(h.material) + "\n" +
-                          "<color=#9aa0b8>   공격력 " + s.damage.ToString("0") + " · 공격 속도 " + s.attackRate.ToString("0.0#") + "/초 · 사거리 " + s.range.ToString("0") + "</color>\n\n");
-            else
-                sb.Append("<color=#7d8196><b>???</b>   조합표에 없는 무언가 — 서로 다른 두 유닛이 반응할지도</color>\n\n");
+            int idx = i;
+            string label = i == 4 ? "히든 " + found + "/" + UnitTable.Hiddens.Length : CodexTabs[i];
+            CodexTab(label, new Vector2(x0 + i * (tabW + gap), 0f), new Vector2(tabW, tabH), i == tab, () => ShowCodexTab(idx));
         }
-        OpenModal("도감 — 히든  " + found + " / " + UnitTable.Hiddens.Length,
-                  "조합표에 없는 조합으로만 태어나는 유닛입니다. 한 번 찾으면 여기와 게임 안 조합 칸에 이름이 보입니다.\n\n" + sb);
+
+        if (tab == 4) { CodexHiddenGrid(58f); return; }
+
+        UnitType[] list = CodexUnits[tab];
+        const float top = 58f, rowH = 80f;
+        for (int i = 0; i < list.Length; i++) CodexRow(list[i], -top - i * rowH, rowH - 6f);
+
+        if (tab == 0)
+            CodexNote(-top - list.Length * rowH - 4f, "1단계는 고유 스킬이 없습니다. 같은 유닛 둘 + 문화권 재료 하나로 2단계가 됩니다.");
+        else if (tab == 4)
+            CodexNote(-top - list.Length * rowH - 4f, "조합표에 없는 조합(서로 다른 1단계 둘 + 재료)으로만 태어납니다. 시너지를 받지 않고 더 조합되지 않습니다.");
+    }
+
+    void CodexTab(string text, Vector2 at, Vector2 size, bool on, System.Action click)
+    {
+        RectTransform b = Rect("Tab_" + text, modalContent, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), at, size);
+        Image frame = b.gameObject.AddComponent<Image>();
+        frame.sprite = slot; frame.type = Image.Type.Sliced; frame.pixelsPerUnitMultiplier = 3.2f;
+        frame.color = on ? Color.white : new Color(0.62f, 0.64f, 0.72f, 0.85f);
+        UnityEngine.UI.Button btn = b.gameObject.AddComponent<UnityEngine.UI.Button>();
+        btn.targetGraphic = frame;
+        btn.onClick.AddListener(() => { if (leaving) return; GenesisAudio.Play(GenesisAudio.Cue.Click); click(); });
+        RectTransform band = Rect("Band", b, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        band.offsetMin = new Vector2(8f, 7f); band.offsetMax = new Vector2(-8f, -7f);
+        Image bi = band.gameObject.AddComponent<Image>();
+        bi.color = on ? new Color(0.10f, 0.08f, 0.03f, 0.92f) : new Color(0.02f, 0.03f, 0.07f, 0.88f);
+        bi.raycastTarget = false;
+        Text t = Label(b, text, 18, on ? goldText : dimText, TextAnchor.MiddleCenter, true);
+        Place(t.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, size);
+    }
+
+    /// <summary>유닛 한 줄 — 초상화 | 이름 · 단계 · 수치 / 스킬 아이콘 · 스킬 이름 / 설명</summary>
+    void CodexRow(UnitType type, float y, float h)
+    {
+        UnitTable.Stats s = UnitTable.Get(type);
+        bool hidden = s.hidden;
+        bool known = !hidden || UnitTable.Discovered(type);
+
+        RectTransform row = Rect("Row_" + type, modalContent, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, y), new Vector2(0f, h));
+        Image bg = row.gameObject.AddComponent<Image>();
+        bg.color = new Color(1f, 1f, 1f, 0.035f);
+        bg.raycastTarget = false;
+
+        // 초상화 — 문화권 색 테두리
+        Color cc = s.culture == Culture.None ? new Color(0.62f, 0.64f, 0.72f) : MaterialTable.Color(s.culture);
+        RectTransform pf = Rect("Frame", row, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(6f, 0f), new Vector2(h - 8f, h - 8f));
+        Image pfi = pf.gameObject.AddComponent<Image>();
+        pfi.color = new Color(cc.r, cc.g, cc.b, known ? 0.9f : 0.35f);
+        pfi.raycastTarget = false;
+        RectTransform pr = Rect("Portrait", pf, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        pr.offsetMin = new Vector2(2f, 2f); pr.offsetMax = new Vector2(-2f, -2f);
+        Image pi = pr.gameObject.AddComponent<Image>();
+        pi.sprite = known ? FindSprite(codexPortraits, "Portrait_" + type) : iconHidden;
+        pi.color = pi.sprite != null ? Color.white : new Color(0.05f, 0.06f, 0.1f, 1f);
+        pi.preserveAspect = true;
+        pi.raycastTarget = false;
+
+        float tx = h + 8f;
+        if (!known)
+        {
+            Text q = Label(row, "<b>???</b>    <color=#7d8196>조합표에 없는 무언가 — 서로 다른 두 유닛이 반응할지도</color>", 19, dimText, TextAnchor.MiddleLeft, false);
+            CodexText(q, tx, 0f, h);
+            return;
+        }
+
+        string tier = new string('★', s.tier) + "  " + s.tier + "단계" + (s.culture != Culture.None ? " · " + MaterialTable.CultureName(s.culture) : "");
+        string stats = "공격력 " + s.damage.ToString("0") + " · " + s.attackRate.ToString("0.0#") + "/초 · 사거리 " + s.range.ToString("0");
+        if (s.slowChance > 0f)
+            stats += " · 맞히면 " + Mathf.RoundToInt(s.slowChance * 100f) + "% 확률로 감속";
+        string head = "<b>" + s.name + "</b>   <size=15><color=#c9a45c>" + tier + "</color></size>";
+        if (hidden)
+        {
+            foreach (UnitTable.Hidden hd in UnitTable.Hiddens)
+                if (hd.result == type)
+                    head += "   <size=15><color=#9aa0b8>" + UnitTable.Get(hd.a).name + " + " + UnitTable.Get(hd.b).name + " + " + MaterialTable.Name(hd.material) + "</color></size>";
+        }
+        Text ht = Label(row, head, 20, textColor, TextAnchor.UpperLeft, false);
+        CodexText(ht, tx, -6f, 26f);
+        Text st = Label(row, stats, 14, dimText, TextAnchor.UpperRight, false);
+        Place(st.rectTransform, new Vector2(1f, 1f), new Vector2(-12f, -9f), new Vector2(360f, 22f));
+        st.rectTransform.pivot = new Vector2(1f, 1f);
+
+        UnitSkill.Def d = UnitSkill.For(type);
+        float line2 = -34f;
+        if (d.kind == UnitSkill.Kind.None)
+        {
+            Text nt = Label(row, "고유 스킬 없음", 15, dimText, TextAnchor.UpperLeft, false);
+            CodexText(nt, tx, line2, 22f);
+            return;
+        }
+
+        Sprite icon = FindSprite(codexSkills, "Skill_" + type);
+        float ix = tx;
+        if (icon != null)
+        {
+            RectTransform ir = Rect("Skill", row, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(tx, line2 + 2f), new Vector2(36f, 36f));
+            Image ii = ir.gameObject.AddComponent<Image>();
+            ii.sprite = icon; ii.preserveAspect = true; ii.raycastTarget = false;
+            ix += 42f;
+        }
+        Text dt = Label(row, "<color=#ffd873><b>" + d.name + "</b></color>   <color=#b8bccb>" + d.desc + "</color>", 14, textColor, TextAnchor.UpperLeft, false);
+        dt.lineSpacing = 1.05f;
+        CodexText(dt, ix, line2, h + line2 - 2f);
+    }
+
+    /// <summary>
+    /// 히든 탭 — 짝(줄) × 재료(칸) 표. 9칸이 다 차 있어 "모든 짝 + 재료에 무언가 숨어 있다"가 보인다.
+    /// 찾은 칸은 초상화 · 이름 · 스킬, 못 찾은 칸은 물음표와 **수수께끼 힌트**(UnitTable.Hidden.hint)
+    /// </summary>
+    void CodexHiddenGrid(float top)
+    {
+        UnitType[][] pairs = { new[] { UnitType.Warrior, UnitType.Archer }, new[] { UnitType.Warrior, UnitType.Priest },
+                               new[] { UnitType.Archer, UnitType.Priest } };
+        const float labelW = 104f, headH = 34f, gap = 6f;
+        float width = modalContent.rect.width > 10f ? modalContent.rect.width : 800f;
+        float height = modalContent.rect.height > 10f ? modalContent.rect.height : 455f;
+        float cellW = (width - labelW - gap * 3f) / 3f;
+        float cellH = (height - top - headH - gap * 3f - 28f) / 3f;
+
+        // 재료 머리 — 명판 위에 재료 아이콘 + 이름 (문화권 색)
+        for (int c = 0; c < 3; c++)
+        {
+            Culture m = MaterialTable.All[c];
+            Color cc = MaterialTable.Color(m);
+            RectTransform hp = Rect("Head_" + m, modalContent, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0.5f, 1f),
+                                    new Vector2(labelW + gap + c * (cellW + gap) + cellW * 0.5f, -top), new Vector2(Mathf.Min(cellW, 200f), headH));
+            Rect win = FramedBox(hp, codexPlaque, new Color(0.04f, 0.05f, 0.1f, 0.95f));
+            Sprite mi = codexMaterialIcons != null && c < codexMaterialIcons.Length ? codexMaterialIcons[c] : null;
+            float iconS = Mathf.Min(win.height + 6f, 28f);
+            Text ht = Label(hp, "<color=#" + ColorUtility.ToHtmlStringRGB(cc) + ">" + MaterialTable.Name(m) + "</color>", 16, textColor, TextAnchor.MiddleCenter, true);
+            Place(ht.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(mi != null ? iconS * 0.5f : 0f, 0f), new Vector2(win.width, headH));
+            if (mi != null)
+            {
+                float tw = Mathf.Min(ht.preferredWidth, win.width - iconS);
+                RectTransform ir = Rect("Icon", hp, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                                        new Vector2(-tw * 0.5f - 5f, 0f), new Vector2(iconS, iconS));
+                Image ii = ir.gameObject.AddComponent<Image>(); ii.sprite = mi; ii.preserveAspect = true; ii.raycastTarget = false;
+            }
+        }
+
+        for (int r = 0; r < 3; r++)
+        {
+            float y = -top - headH - gap - r * (cellH + gap);
+            PairLabel(pairs[r][0], pairs[r][1], new Vector2(0f, y), new Vector2(labelW, cellH));
+
+            for (int c = 0; c < 3; c++)
+            {
+                UnitTable.Hidden h;
+                if (!UnitTable.TryHidden(pairs[r][0], pairs[r][1], MaterialTable.All[c], out h)) continue;
+                HiddenCell(h, new Vector2(labelW + gap + c * (cellW + gap), y), new Vector2(cellW, cellH));
+            }
+        }
+
+        int found = 0;
+        foreach (UnitTable.Hidden h in UnitTable.Hiddens) if (UnitTable.Discovered(h.result)) found++;
+        CodexNote(-height + 26f, "조합표에 없는 조합 — 서로 다른 1단계 둘 + 재료.  찾은 히든 " + found + " / " + UnitTable.Hiddens.Length +
+                                 "   ·   시너지를 받지 않고 더 조합되지 않습니다.");
+    }
+
+    /// <summary>
+    /// 9분할 틀을 이 칸 높이에 맞춰 깐다 — 틀 전체가 칸을 채우고, 테두리(= 창까지 거리)는 칸 높이 비율로 준다.
+    /// 창 안에 바탕색을 먼저 깔고 틀을 위에 얹는다. 돌려주는 값은 **창 자리**(칸 로컬, 왼쪽 위 기준 x · y 는 양수 거리)
+    /// </summary>
+    /// <param name="sliced">9분할로 (가운데 변이 민무늬인 명판). 끄면 통째로 늘인다 — 카드 윗변의 별 보석 ·
+    /// 봉인 틀 아랫변의 자물쇠처럼 **변 가운데 장식**이 있으면 9분할이 그걸 가로로 번지게 한다</param>
+    Rect FramedBox(RectTransform box, Sprite frame, Color fill, bool sliced = true)
+    {
+        float h = box.sizeDelta.y, w = box.sizeDelta.x;
+        Vector4 b = Vector4.zero;
+        if (frame != null)
+        {
+            if (sliced)
+            {
+                float k = h / frame.rect.height;            // 스프라이트 픽셀 → 화면
+                b = frame.border * k;                       // 왼 · 아래 · 오른 · 위
+                // 가로가 좁으면 좌우 장식이 창을 먹는다 — 창이 너무 좁아지지 않게 가로만 줄인다
+                float maxSide = w * 0.18f;
+                if (b.x > maxSide || b.z > maxSide) { float s = maxSide / Mathf.Max(b.x, b.z); b.x *= s; b.z *= s; }
+            }
+            else
+            {
+                float kx = w / frame.rect.width, ky = h / frame.rect.height;
+                b = new Vector4(frame.border.x * kx, frame.border.y * ky, frame.border.z * kx, frame.border.w * ky);
+            }
+        }
+        RectTransform fillR = Rect("Fill", box, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        fillR.offsetMin = new Vector2(b.x - 1f, b.y - 1f); fillR.offsetMax = new Vector2(-b.z + 1f, -b.w + 1f);
+        Image fi = fillR.gameObject.AddComponent<Image>(); fi.color = fill; fi.raycastTarget = false;
+        if (frame != null)
+        {
+            RectTransform fr = Rect("Frame", box, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            Image im = fr.gameObject.AddComponent<Image>();
+            im.sprite = frame; im.raycastTarget = false;
+            if (sliced)
+            {
+                im.type = Image.Type.Sliced; im.fillCenter = false;
+                // 표시 테두리 = 스프라이트 테두리 × 100 / (PPU × 배수) → 배수 = 스프라이트 높이 / 칸 높이 × 100 / PPU
+                im.pixelsPerUnitMultiplier = frame.rect.height / Mathf.Max(1f, h) * 100f / frame.pixelsPerUnit;
+            }
+            else im.type = Image.Type.Simple;
+        }
+        return new Rect(b.x, b.w, Mathf.Max(1f, w - b.x - b.z), Mathf.Max(1f, h - b.y - b.w));
+    }
+
+    /// <summary>줄 머리 — 1단계 초상화 둘을 "+" 로 잇고 밑에 이름</summary>
+    void PairLabel(UnitType a, UnitType b, Vector2 at, Vector2 size)
+    {
+        RectTransform box = Rect("Pair_" + a + "_" + b, modalContent, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), at, size);
+        float s = Mathf.Min(40f, (size.x - 18f) * 0.5f);
+        float cy = size.y * 0.5f + 8f;
+        for (int i = 0; i < 2; i++)
+        {
+            UnitType t = i == 0 ? a : b;
+            RectTransform pf = Rect("P" + i, box, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0.5f, 0.5f),
+                                    new Vector2(size.x * 0.5f + (i == 0 ? -1f : 1f) * (s * 0.5f + 7f), -cy + 8f), new Vector2(s, s));
+            Image fr = pf.gameObject.AddComponent<Image>(); fr.color = new Color(goldText.r, goldText.g, goldText.b, 0.7f); fr.raycastTarget = false;
+            RectTransform pr = Rect("Img", pf, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            pr.offsetMin = new Vector2(1.5f, 1.5f); pr.offsetMax = new Vector2(-1.5f, -1.5f);
+            Image pi = pr.gameObject.AddComponent<Image>(); pi.sprite = FindSprite(codexPortraits, "Portrait_" + t); pi.preserveAspect = true; pi.raycastTarget = false;
+        }
+        Text plus = Label(box, "+", 18, goldText, TextAnchor.MiddleCenter, true);
+        Place(plus.rectTransform, new Vector2(0f, 1f), new Vector2(size.x * 0.5f - 8f, -cy + 8f + 12f), new Vector2(16f, 24f));
+        Text nm = Label(box, UnitTable.Get(a).name + " + " + UnitTable.Get(b).name, 13, dimText, TextAnchor.UpperCenter, true);
+        Place(nm.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -cy - s * 0.5f + 4f), new Vector2(size.x, 20f));
+        nm.rectTransform.pivot = new Vector2(0f, 1f);
+    }
+
+    void HiddenCell(UnitTable.Hidden h, Vector2 at, Vector2 size)
+    {
+        bool known = UnitTable.Discovered(h.result);
+        RectTransform cell = Rect("Hidden_" + h.result, modalContent, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), at, size);
+        Color cc = MaterialTable.Color(h.material);
+        // 찾은 칸 = 금테 카드 + 재료 색 바탕 / 못 찾은 칸 = 사슬 감긴 돌판 + 어두운 보랏빛
+        Rect win = FramedBox(cell, known ? codexCard : codexSealed,
+                             known ? new Color(cc.r * 0.2f, cc.g * 0.2f, cc.b * 0.22f + 0.02f, 0.96f)
+                                   : new Color(0.07f, 0.05f, 0.1f, 0.96f), false);
+
+        float pad = 5f;
+        float ps = Mathf.Min(50f, win.height - pad * 2f);
+        float px = win.x + pad, py = -(win.y + (win.height - ps) * 0.5f);
+        if (known)
+        {
+            RectTransform pf = Rect("PortraitFrame", cell, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(px, py), new Vector2(ps, ps));
+            Image pfi = pf.gameObject.AddComponent<Image>(); pfi.color = new Color(cc.r, cc.g, cc.b, 0.9f); pfi.raycastTarget = false;
+            RectTransform pr = Rect("Portrait", pf, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            pr.offsetMin = new Vector2(2f, 2f); pr.offsetMax = new Vector2(-2f, -2f);
+            Image pi = pr.gameObject.AddComponent<Image>();
+            pi.sprite = FindSprite(codexPortraits, "Portrait_" + h.result); pi.preserveAspect = true; pi.raycastTarget = false;
+        }
+        else
+        {
+            // 봉인 문장 — 물음표 그림 대신. 없으면 예전 그림
+            RectTransform sr = Rect("Seal", cell, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(px, py), new Vector2(ps, ps));
+            Image si = sr.gameObject.AddComponent<Image>();
+            si.sprite = codexSeal != null ? codexSeal : iconHidden; si.preserveAspect = true; si.raycastTarget = false;
+            si.color = new Color(1f, 1f, 1f, 0.9f);
+        }
+
+        float tx = px + ps + 8f, right = size.x - (win.x + win.width) + pad;
+        float ty = win.y + 3f;
+        if (known)
+        {
+            UnitTable.Stats s = UnitTable.Get(h.result);
+            UnitSkill.Def d = UnitSkill.For(h.result);
+            Text nt = Label(cell, "<b>" + s.name + "</b>", 17, goldText, TextAnchor.UpperLeft, false);
+            CellText(nt, tx, ty, right, 22f);
+            // 칸이 좁아 한 줄로 쓰면 꺾여 틀 밖으로 넘쳤다 — 수치 두 줄 + 스킬 한 줄로 끊어 쓴다
+            Text st = Label(cell, "<color=#9aa0b8>" + s.damage.ToString("0") + " × " + s.attackRate.ToString("0.0#") + "/초\n사거리 " + s.range.ToString("0") + "</color>" +
+                                  (d.kind != UnitSkill.Kind.None ? "\n<color=#ffd873>" + d.name + "</color>" : ""),
+                            12, textColor, TextAnchor.UpperLeft, false);
+            st.lineSpacing = 0.95f;
+            CellText(st, tx, ty + 21f, right, win.height - 22f);
+        }
+        else
+        {
+            // 봉인 문장이 이미 "모른다"를 말한다 — ??? 글자는 빼고 힌트에 자리를 준다 (봉인 틀은 자물쇠 때문에 창이 낮다)
+            // <i> 는 쓰지 않는다 — 한글 글꼴엔 기울임꼴이 없어 유니티가 글자를 억지로 비틀어 삐뚤어 보였다
+            Text ht = Label(cell, h.hint, 12, new Color(0.80f, 0.78f, 0.90f), TextAnchor.MiddleLeft, false);
+            ht.lineSpacing = 0.95f;
+            CellText(ht, tx, win.y, right, win.height);
+        }
+    }
+
+    /// <summary>칸 안 글자 — 왼쪽 x, 위에서 y 만큼, 오른쪽 여백 right</summary>
+    void CellText(Text t, float x, float y, float right, float h)
+    {
+        RectTransform r = t.rectTransform;
+        r.anchorMin = new Vector2(0f, 1f); r.anchorMax = new Vector2(1f, 1f); r.pivot = new Vector2(0f, 1f);
+        r.offsetMin = new Vector2(x, -y - h); r.offsetMax = new Vector2(-right, -y);
+    }
+
+    void CodexText(Text t, float x, float y, float h)
+    {
+        RectTransform r = t.rectTransform;
+        r.anchorMin = new Vector2(0f, 1f); r.anchorMax = new Vector2(1f, 1f); r.pivot = new Vector2(0f, 1f);
+        r.offsetMin = new Vector2(x, y - h); r.offsetMax = new Vector2(-12f, y);
+    }
+
+    void CodexNote(float y, string text)
+    {
+        Text n = Label(modalContent, text, 15, dimText, TextAnchor.UpperCenter, false);
+        Place(n.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, y), new Vector2(800f, 24f));
+        n.rectTransform.pivot = new Vector2(0.5f, 1f);
+    }
+
+    static Sprite FindSprite(Sprite[] list, string name)
+    {
+        if (list == null) return null;
+        foreach (Sprite s in list) if (s != null && s.name == name) return s;
+        return null;
     }
 
     void ShowHelp()
@@ -521,7 +848,112 @@ public class TitleMenu : MonoBehaviour
 
     // ── 동작 ─────────────────────────────
 
-    void StartGame() { Leave(GameScene); }
+    // ── 난이도 — 게임 시작을 누르면 고른다. 보통 → 어려움 → 카오스, 앞을 깨야 다음이 열린다 ──
+
+    Text recordText;
+    bool pickerOpen;
+
+    void RefreshRecord()
+    {
+        if (recordText == null) return;
+        GenesisDifficulty.Level d = GenesisDifficulty.Selected;
+        if (GenesisRecords.PlaysOn(d) <= 0) { recordText.text = ""; return; }
+        string best = GenesisRecords.WinsOn(d) > 0 ? "클리어 " + GenesisRecords.WinsOn(d) + "회" : GenesisRecords.BestRoundOn(d) + "라운드";
+        float chaos = GenesisRecords.BestChaosOn(d);
+        recordText.text = "<color=#ffd873>최고 기록 · " + GenesisDifficulty.Name(d) + "</color>   " + best
+                        + (chaos >= 0f ? "   ·   최단 카오스 " + GenesisRecords.Clock(chaos) : "")
+                        + "   ·   " + GenesisRecords.PlaysOn(d) + "판";
+    }
+
+    void StartGame() { ShowDifficulty(); }
+
+    void ShowDifficulty()
+    {
+        OpenModal("난이도", "");
+        pickerOpen = true;
+        GenesisDifficulty.Level sel = GenesisDifficulty.Selected;
+        const float rowH = 124f, gap = 14f;
+        for (int i = 0; i < GenesisDifficulty.All.Length; i++)
+            DifficultyRow(GenesisDifficulty.All[i], -i * (rowH + gap), rowH, GenesisDifficulty.All[i] == sel);
+
+        Text hint = Label(modalContent, "Enter  고른 난이도로 시작   ·   Esc  닫기", 15, dimText, TextAnchor.UpperCenter, false);
+        Place(hint.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -3f * (rowH + gap) - 4f), new Vector2(800f, 24f));
+        hint.rectTransform.pivot = new Vector2(0.5f, 1f);
+    }
+
+    /// <summary>난이도 한 줄 — 이름 · 설명 · 그 난이도 기록. 잠긴 줄은 흐리고 무엇을 깨야 열리는지만</summary>
+    void DifficultyRow(GenesisDifficulty.Level d, float y, float h, bool selected)
+    {
+        bool open = GenesisDifficulty.Unlocked(d);
+        Color tint = GenesisDifficulty.Tint(d);
+
+        RectTransform row = Rect("Diff_" + d, modalContent, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, y), new Vector2(0f, h));
+        Image frame = row.gameObject.AddComponent<Image>();
+        frame.sprite = slot; frame.type = Image.Type.Sliced; frame.pixelsPerUnitMultiplier = 3.2f;
+        frame.color = !open ? new Color(0.4f, 0.42f, 0.5f, 0.6f) : selected ? Color.white : new Color(0.75f, 0.76f, 0.82f, 0.9f);
+        RectTransform band = Rect("Band", row, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        band.offsetMin = new Vector2(12f, 10f); band.offsetMax = new Vector2(-12f, -10f);
+        Image bi = band.gameObject.AddComponent<Image>();
+        bi.color = selected && open ? new Color(0.10f, 0.08f, 0.03f, 0.92f) : new Color(0.02f, 0.03f, 0.07f, 0.9f);
+        bi.raycastTarget = false;
+
+        // 왼쪽 색 기둥 — 난이도 색
+        RectTransform bar = Rect("Bar", row, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(5f, -40f));
+        Image bari = bar.gameObject.AddComponent<Image>();
+        bari.color = open ? tint : new Color(0.35f, 0.36f, 0.42f);
+        bari.raycastTarget = false;
+
+        Text name = Title(row, GenesisDifficulty.Name(d), 34, open ? tint : new Color(0.45f, 0.46f, 0.52f), false);
+        name.alignment = TextAnchor.MiddleLeft;
+        name.rectTransform.anchorMin = new Vector2(0f, 1f); name.rectTransform.anchorMax = new Vector2(0f, 1f);
+        name.rectTransform.pivot = new Vector2(0f, 1f);
+        name.rectTransform.anchoredPosition = new Vector2(46f, -16f); name.rectTransform.sizeDelta = new Vector2(260f, 46f);
+
+        string body;
+        if (!open)
+            body = "<color=#7d8196>잠김 — " + GenesisDifficulty.Name((GenesisDifficulty.Level)((int)d - 1)) + "을 깨면 열립니다</color>";
+        else
+        {
+            body = GenesisDifficulty.Blurb(d);
+            if (GenesisRecords.PlaysOn(d) > 0)
+            {
+                string best = GenesisRecords.WinsOn(d) > 0 ? "클리어 " + GenesisRecords.WinsOn(d) + "회" : "최고 " + GenesisRecords.BestRoundOn(d) + "라운드";
+                float c = GenesisRecords.BestChaosOn(d);
+                body += "\n<color=#c9a45c>" + best + (c >= 0f ? " · 최단 카오스 " + GenesisRecords.Clock(c) : "") + " · " + GenesisRecords.PlaysOn(d) + "판</color>";
+            }
+        }
+        Text bt = Label(row, body, 17, textColor, TextAnchor.UpperLeft, false);
+        bt.lineSpacing = 1.2f;
+        RectTransform br = bt.rectTransform;
+        br.anchorMin = new Vector2(0f, 1f); br.anchorMax = new Vector2(1f, 1f); br.pivot = new Vector2(0f, 1f);
+        br.offsetMin = new Vector2(46f, -h + 14f); br.offsetMax = new Vector2(-30f, -62f);
+
+        if (selected && open)
+        {
+            Text mark = Label(row, "선택됨", 15, goldText, TextAnchor.MiddleRight, true);
+            Place(mark.rectTransform, new Vector2(1f, 1f), new Vector2(-30f, -22f), new Vector2(200f, 30f));
+            mark.rectTransform.pivot = new Vector2(1f, 1f);
+        }
+
+        UnityEngine.UI.Button btn = row.gameObject.AddComponent<UnityEngine.UI.Button>();
+        btn.targetGraphic = frame;
+        btn.transition = open ? Selectable.Transition.ColorTint : Selectable.Transition.None;
+        btn.onClick.AddListener(() =>
+        {
+            if (leaving) return;
+            if (!open) { GenesisAudio.Play(GenesisAudio.Cue.Denied); return; }
+            GenesisAudio.Play(GenesisAudio.Cue.Click);
+            GenesisDifficulty.Selected = d;
+            Begin();
+        });
+    }
+
+    /// <summary>고른 난이도로 판을 연다 (GameLoop.Awake 가 난이도 숫자를 읽는다)</summary>
+    void Begin()
+    {
+        pickerOpen = false;
+        Leave(GameScene);
+    }
 
     void QuitGame()
     {
@@ -573,8 +1005,10 @@ public class TitleMenu : MonoBehaviour
 
         var k2 = UnityEngine.InputSystem.Keyboard.current;
         if (k2 == null || leaving) return;
+        bool enter = k2.enterKey.wasPressedThisFrame || k2.numpadEnterKey.wasPressedThisFrame;
         if (k2.escapeKey.wasPressedThisFrame && modal != null && modal.gameObject.activeSelf) CloseModal();
-        else if ((k2.enterKey.wasPressedThisFrame || k2.numpadEnterKey.wasPressedThisFrame) && !modal.gameObject.activeSelf) StartGame();
+        else if (enter && pickerOpen && modal.gameObject.activeSelf) Begin();          // 난이도 창에서 Enter — 고른 것으로 시작
+        else if (enter && !modal.gameObject.activeSelf) StartGame();
     }
 
     // ── UI 도구 (GenesisHud 와 같은 모양) ─

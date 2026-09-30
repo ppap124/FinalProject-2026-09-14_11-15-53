@@ -20,7 +20,7 @@ public class GenesisAudio : MonoBehaviour
         Click, Denied,
         Summon, Material, Gold, Fail,
         Combine, Legend, Store, Skill,
-        RoundStart, Boss, Chaos,
+        RoundStart, Boss, Chaos, ChaosRumble,
         Kill,
         Victory, Defeat
     }
@@ -58,7 +58,10 @@ public class GenesisAudio : MonoBehaviour
     [Header("효과음 — 라운드")]
     public AudioClip roundStart;
     public AudioClip boss;
+    [Tooltip("카오스가 눈을 뜰 때")]
     public AudioClip chaos;
+    [Tooltip("카오스가 벽 아래에서 떠오를 때의 땅울림 (드드드) — ChaosIntro.rumbleBeats 박자에 흔들린다")]
+    public AudioClip chaosRumble;
     public AudioClip kill;
     public AudioClip victory;
     public AudioClip defeat;
@@ -166,7 +169,7 @@ public class GenesisAudio : MonoBehaviour
         GameLoop gl = GameLoop.Instance;
         if (gl == null) return;
 
-        if (gl.IsFinalRound) { Music(bgmFinal, true); Play(Cue.Chaos); }
+        if (gl.IsFinalRound) { Music(bgmFinal, true); if (!gl.chaosIntro) Play(Cue.Chaos); }   // 연출이 있으면 눈 뜰 때 (ChaosIntro)
         else if (gl.IsBossRound(round)) { Music(bgmBoss, true); Play(Cue.Boss); }
         else { Music(bgmNormal, true); Play(Cue.RoundStart); }
     }
@@ -220,6 +223,7 @@ public class GenesisAudio : MonoBehaviour
             case Cue.RoundStart: return roundStart;
             case Cue.Boss:       return boss;
             case Cue.Chaos:      return chaos != null ? chaos : boss;
+            case Cue.ChaosRumble: return chaosRumble;
             case Cue.Kill:       return kill;
             case Cue.Victory:    return victory;
             case Cue.Defeat:     return defeat;

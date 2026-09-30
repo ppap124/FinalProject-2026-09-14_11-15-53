@@ -181,6 +181,7 @@ public class Unit : MonoBehaviour
             float d = damage;
             if (Syn != null) d *= Syn.DamageMult(Culture);
             if (Lab != null) d *= Lab.DamageMult(Tier);
+            if (Time.time < empowerUntil) d *= empowerMult;   // 화랑 풍류
             return d;
         }
     }
@@ -208,6 +209,18 @@ public class Unit : MonoBehaviour
         frenzyMult = mult;
         frenzyUntil = Time.time + duration;
         cooldown = Mathf.Min(cooldown, 1f / Mathf.Max(0.01f, EffectiveAttackRate));   // 바로 빨라지게
+    }
+
+    // 공격력 강화 (화랑 풍류) — 공속 강화(케이론)와 칸이 달라 둘이 겹친다
+    float empowerMult = 1f, empowerUntil;
+
+    /// <summary>남이 걸어 주는 공격력 증가. 더 센 것이 걸려 있으면 덮지 않는다. 걸었으면 true</summary>
+    public bool Empower(float mult, float duration)
+    {
+        if (Time.time < empowerUntil && empowerMult > mult) return false;
+        empowerMult = mult;
+        empowerUntil = Mathf.Max(empowerUntil, Time.time + duration);
+        return true;
     }
 
     /// <summary>
@@ -385,6 +398,7 @@ public float range = 10f;
     bool InRange(Monster m)
     {
         if (m == null) return false;
+        if (GameLoop.Instance != null && GameLoop.Instance.Everywhere(m)) return true;   // 벽 너머의 카오스
         // 바닥 위 거리로 잰다 — 떠 있는 카오스나 키 큰 보스는 몸 중심이 높아서, 3D 로 재면
         // 근접 유닛이 바로 옆에 서 있어도 사거리 밖이 된다
         Vector3 d = m.transform.position - transform.position;

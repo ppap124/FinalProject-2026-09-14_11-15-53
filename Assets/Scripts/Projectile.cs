@@ -33,7 +33,16 @@ public float lifeTime = 3f;
         this.slowChance = slowChance;
         this.slowAmount = slowAmount;
         this.slowDuration = slowDuration;
+
+        // 카오스는 벽 너머 하늘에 있다 — 멀어서 평소 수명(3초)이면 닿기 전에 사라진다. 겉면을 노린다
+        aimFrom = transform.position;
+        if (target != null && target.hitRadius > 0f)
+            lifeTime = Mathf.Max(lifeTime, (target.SurfacePoint(aimFrom) - aimFrom).magnitude / Mathf.Max(1f, speed) + 1.5f);
     }
+
+    Vector3 aimFrom;
+    /// <summary>맞는 자리 — 보통은 몸 중심, 거대한 몸(카오스)은 쏜 쪽 겉면</summary>
+    Vector3 Impact => target.hitRadius > 0f ? target.SurfacePoint(aimFrom) : target.transform.position;
 
     public void SetSynergy(float splashRadius, float splashFraction, float critChance, float critMult, float confuseTime)
     {
@@ -80,7 +89,7 @@ public float lifeTime = 3f;
 
         if (instantDelay >= 0f)
         {
-            transform.position = target.transform.position;
+            transform.position = Impact;
             if (age >= instantDelay) { Hit(); Destroy(gameObject); }
             return;
         }
@@ -93,7 +102,7 @@ public float lifeTime = 3f;
             if (near != null) target = near;
         }
 
-        Vector3 dest = target.transform.position;
+        Vector3 dest = Impact;
         Vector3 before = transform.position;
         Vector3 next = Vector3.MoveTowards(flat, dest, speed * Time.deltaTime);
         traveled += (next - flat).magnitude;
@@ -121,7 +130,7 @@ public float lifeTime = 3f;
     void Hit()
     {
         if (hitFx != null)
-            AttackFx.Burst(hitFx, target.transform.position + Vector3.up * hitHeight, hitFxSize);
+            AttackFx.Burst(hitFx, target.hitRadius > 0f ? Impact : target.transform.position + Vector3.up * hitHeight, hitFxSize);
 
         float dmg = damage;
 

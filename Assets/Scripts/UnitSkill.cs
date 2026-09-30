@@ -28,6 +28,12 @@ using UnityEngine;
 /// | 케이론 (히든) | 영웅의 스승 | 둘레 아군 공속 증가 — 하나뿐인 아군 강화 |
 /// | 에인헤랴르 (히든) | 끝나지 않는 전투 | 큰 한 방 — 그걸로 잡으면 다음 공격에 또 |
 /// | 주몽 (히든) | 백발백중 | 사거리 끝의 적에게 큰 한 방 + 묶기 |
+/// | 시구르드 (히든) | 그람 | 큰 한 방 — 보스에게 곱절 |
+/// | 화랑 (히든) | 풍류 | 둘레 아군 공격력 증가 |
+/// | 헤라클레스 (히든) | 열두 과업 | 둘레 광역 + 밀치기 + 짧은 기절 |
+/// | 강림도령 (히든) | 저승 명부 | 둘레 피해 + 다 죽어 가는 적 한꺼번에 처형 |
+/// | 오디세우스 (히든) | 열두 도끼 꿰기 | 가장 먼 적 쪽 일직선 관통 |
+/// | 울르 (히든) | 룬 화살 | 가까운 셋에 룬 — 잠시 뒤 둘레 폭발 |
 ///
 /// 피해는 전부 **유닛의 실제 공격력(시너지 · 연구 포함) 배수**라 강화가 스킬에도 먹는다.
 /// 수치는 이 파일 `For` 한 곳에서 고친다. 연출은 코드로 만든다 (`SkillFx`).
@@ -38,7 +44,8 @@ public class UnitSkill : MonoBehaviour
     {
         None, Quake, Frost, Pierce, Chain, Spear, Storm,
         Gore, Feathers, Expose, Frenzy, Judgement, RuneBind, Treasure, Talisman, Charm,
-        Inspire, Endless, Snipe
+        Inspire, Endless, Snipe,
+        Dragonslayer, Rally, Club, Reaper, AxeShot, RuneMark
     }
 
     public struct Def
@@ -143,6 +150,36 @@ public class UnitSkill : MonoBehaviour
                 return new Def { kind = Kind.Snipe, name = "백발백중", every = 4, power = 4f, effect = 1f,
                                  color = new Color(1f, 0.55f, 0.4f),
                                  desc = "4번째 공격마다 사거리 안에서 가장 먼 적에게 화살을 꽂아 공격력 ×4 피해를 주고 1초 묶습니다. (보스는 짧게)" };
+
+            // ── 히든 2차 ──
+            case UnitType.Sigurd:
+                // 용 사냥꾼 — 보스에게 곱절. 오딘 궁니르(체력 최다 추적)와 달리 제 표적을 친다
+                return new Def { kind = Kind.Dragonslayer, name = "그람", every = 4, power = 3f, effect = 2f,
+                                 color = new Color(1f, 0.45f, 0.3f),
+                                 desc = "4번째 공격마다 명검 그람으로 공격력 ×3 피해를 줍니다. 보스에게는 두 배(×6)." };
+            case UnitType.Hwarang:
+                // 풍류 — 둘레 아군 **공격력** 증가 (케이론은 공속). 둘이 겹친다
+                return new Def { kind = Kind.Rally, name = "풍류", every = 8, radius = 8f, effect = 1.25f, duration = 4f,
+                                 color = new Color(1f, 0.55f, 0.65f),
+                                 desc = "8번째 공격마다 둘레 8 안의 아군 모두의 공격력을 4초 동안 ×1.25 올립니다." };
+            case UnitType.Heracles:
+                return new Def { kind = Kind.Club, name = "열두 과업", every = 6, power = 2.2f, radius = 5f, effect = 3f, duration = 0.6f,
+                                 color = new Color(1f, 0.75f, 0.35f),
+                                 desc = "6번째 공격마다 몽둥이로 둘레 5 안의 적 모두에게 공격력 ×2.2 피해를 주고 뒤로 밀쳐 0.6초 기절시킵니다." };
+            case UnitType.Gangnim:
+                // 저승 명부 — 발키리(한 마리 처형)와 달리 둘레의 **다 죽어 가는 적을 한꺼번에**
+                return new Def { kind = Kind.Reaper, name = "저승 명부", every = 5, power = 1.5f, radius = 6f, effect = 0.2f,
+                                 color = new Color(0.75f, 0.6f, 1f),
+                                 desc = "5번째 공격마다 둘레 6 안의 적에게 공격력 ×1.5 피해를 주고, 체력이 20% 이하로 남은 적은 저승으로 데려갑니다. (보스 제외)" };
+            case UnitType.Odysseus:
+                // 열두 도끼 꿰기 — 이무기 여의주(표적 쪽)와 달리 **가장 먼 적 쪽으로**, 사거리 끝까지
+                return new Def { kind = Kind.AxeShot, name = "열두 도끼 꿰기", every = 4, power = 3f, effect = 1.4f,
+                                 color = new Color(0.55f, 0.8f, 1f),
+                                 desc = "4번째 공격마다 가장 먼 적을 향해 화살을 쏘아 그 일직선 위의 적을 모두 꿰뚫고 공격력 ×3 피해를 줍니다." };
+            case UnitType.Ullr:
+                return new Def { kind = Kind.RuneMark, name = "룬 화살", every = 5, power = 1.8f, radius = 3f, effect = 3f, duration = 1.2f,
+                                 color = new Color(0.65f, 0.9f, 1f),
+                                 desc = "5번째 공격마다 가까운 적 셋에게 룬을 새깁니다. 1.2초 뒤 룬이 터져 둘레 3 안의 적에게 공격력 ×1.8 피해를 줍니다." };
         }
         return new Def { kind = Kind.None };
     }
@@ -401,6 +438,92 @@ public class UnitSkill : MonoBehaviour
                 SkillFx.Sparks(Ground(p), def.color, 20, 7f, 0.5f);
                 prey.Stun(def.effect);
                 prey.TakeDamage(dmg);
+                break;
+            }
+
+            // ── 히든 2차 ──
+
+            case Kind.Dragonslayer:
+            {
+                Vector3 p = target.transform.position;
+                bool boss = target.isBoss;
+                SkillFx.Beam(p + new Vector3(-1.8f, 3.2f, 0f), p + new Vector3(1.8f, 0.2f, 0f), def.color, boss ? 0.55f : 0.35f, 0.22f);
+                SkillFx.Shock(at, boss ? 3.2f : 2f, def.color, 0.35f, 0.35f);
+                SkillFx.Sparks(at, def.color, boss ? 40 : 18, 7f, 0.6f);
+                target.TakeDamage(dmg * (boss ? def.effect : 1f));
+                break;
+            }
+
+            case Kind.Rally:
+            {
+                Vector3 c = Ground(unit.transform.position);
+                float r2 = def.radius * def.radius;
+                if (SoulShop.Instance != null)
+                    foreach (Unit u in SoulShop.Instance.Units)
+                    {
+                        if (u == null) continue;
+                        Vector3 d = u.transform.position - unit.transform.position; d.y = 0f;
+                        if (d.sqrMagnitude > r2) continue;
+                        if (u.Empower(def.effect, def.duration))
+                            SkillFx.Halo(u.transform, null, 1.1f, 0.15f, def.color, def.duration);
+                    }
+                SkillFx.Shock(c, def.radius, def.color, 0.6f, 0.25f);
+                SkillFx.Sparks(c, def.color, 30, 5f, 1f);
+                break;
+            }
+
+            case Kind.Club:
+                gl.Gather(at, def.radius, hits);
+                foreach (Monster m in hits) { m.TakeDamage(dmg); m.Knockback(def.effect); m.Stun(def.duration); }
+                SkillFx.Shock(at, def.radius, def.color, 0.5f, 0.45f);
+                SkillFx.Sparks(at, def.color, 36, 8f, 0.7f);
+                if (CameraRig.Instance != null) CameraRig.Instance.Shake(0.1f, 0.2f);
+                break;
+
+            case Kind.Reaper:
+            {
+                Vector3 c = Ground(unit.transform.position);
+                gl.Gather(c, def.radius, hits);
+                foreach (Monster m in hits)
+                {
+                    m.TakeDamage(dmg);
+                    if (!m.isBoss && !m.IsDying && m.HpRatio <= def.effect)
+                    {
+                        m.TakeDamage(m.Hp + 1f);
+                        SkillFx.Sparks(Ground(m.transform.position), def.color, 12, 4f, 0.8f);
+                    }
+                }
+                SkillFx.Shock(c, def.radius, def.color, 0.7f, 0.3f);
+                SkillFx.Shock(c, def.radius * 0.5f, new Color(0.2f, 0.1f, 0.3f), 0.5f, 0.4f);
+                break;
+            }
+
+            case Kind.AxeShot:
+            {
+                Monster far = gl.FindFarthest(unit.transform.position, unit.range);
+                Vector3 from = Ground(unit.transform.position);
+                Vector3 aim = far != null ? Ground(far.transform.position) : at;
+                Vector3 dir = aim - from;
+                if (dir.sqrMagnitude < 0.01f) dir = unit.transform.forward;
+                dir.y = 0f; dir.Normalize();
+                Vector3 to = from + dir * unit.range;
+                gl.Gather((from + to) * 0.5f, unit.range * 0.5f + def.effect, hits);
+                foreach (Monster m in hits)
+                    if (DistToSegment(Ground(m.transform.position), from, to) <= def.effect) m.TakeDamage(dmg);
+                SkillFx.Beam(from + Vector3.up * 1.6f, to + Vector3.up * 1.2f, def.color, 0.3f, 0.3f);
+                SkillFx.Sparks(to, def.color, 20, 6f, 0.5f);
+                break;
+            }
+
+            case Kind.RuneMark:
+            {
+                Nearest(gl, unit.transform.position, unit.range, Mathf.RoundToInt(def.effect));
+                Vector3 from = unit.transform.position + Vector3.up * 1.8f;
+                foreach (Monster m in hits)
+                {
+                    SkillFx.Beam(from, m.transform.position + Vector3.up * 0.7f, def.color, 0.14f, 0.25f);
+                    TalismanBlast.Stick(m, dmg, def.radius, def.duration, def.color, def.name);
+                }
                 break;
             }
         }
@@ -768,12 +891,14 @@ public class TalismanBlast : MonoBehaviour
     Vector3 last;
     static readonly System.Collections.Generic.List<Monster> hits = new System.Collections.Generic.List<Monster>();
 
-    public static void Stick(Monster target, float damage, float radius, float delay, Color col)
+    string source = "폭렬 부적";   // 피해 통계 이름 — 울르의 룬 화살도 이 폭발을 쓴다
+
+    public static void Stick(Monster target, float damage, float radius, float delay, Color col, string source = "폭렬 부적")
     {
         if (target == null) return;
         GameObject g = new GameObject("Talisman");
         TalismanBlast b = g.AddComponent<TalismanBlast>();
-        b.target = target; b.damage = damage; b.radius = radius; b.delay = delay; b.color = col;
+        b.target = target; b.damage = damage; b.radius = radius; b.delay = delay; b.color = col; b.source = source;
         b.last = target.transform.position;
         SkillFx.Halo(target.transform, target, 0.7f, 1.2f, col, delay);
     }
@@ -788,7 +913,7 @@ public class TalismanBlast : MonoBehaviour
         if (GameLoop.Instance != null)
         {
             GameLoop.Instance.Gather(at, radius, hits);
-            Monster.DamageSource = "폭렬 부적";
+            Monster.DamageSource = source;
             foreach (Monster m in hits) m.TakeDamage(damage);
             Monster.DamageSource = null;
         }

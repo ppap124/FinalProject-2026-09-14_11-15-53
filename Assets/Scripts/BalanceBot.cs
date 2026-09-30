@@ -183,7 +183,7 @@ public class BalanceBot : MonoBehaviour
             if (Count(h.a) % 2 == 0 || Count(h.b) % 2 == 0) continue;
             if (MaterialBank.Instance.Get(h.material) < 1) continue;
             List<Unit> a = FindUnits(h.a, 1), b = FindUnits(h.b, 1);
-            if (a.Count == 1 && b.Count == 1 && UnitCombiner.Instance.CombineHidden(a[0], b[0])) return true;
+            if (a.Count == 1 && b.Count == 1 && UnitCombiner.Instance.CombineHidden(a[0], b[0], h.material)) return true;
         }
         return false;
     }

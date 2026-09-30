@@ -9,8 +9,9 @@ public class SoulBank : MonoBehaviour
     public static SoulBank Instance { get; private set; }
 
     [Header("수급")]
-    public int startingSouls = 25;
-    public int soulsPerRound = 5;
+    [Tooltip("시작 영혼. 1라운드는 유닛 3마리면 막힌다 — 8개였을 때 남는 영혼이 곧장 재료 · 금화로 가서 초반 10라운드에 압박이 없었다. 5 = 유닛 3 + 재료 1 + 금화 1 (기획 §56)")]
+    public int startingSouls = 5;
+    public int soulsPerRound = 3;
 
     [Header("생성 위치 (영혼 블록)")]
     public Vector3 spawnCenter = new Vector3(-11f, 1.0f, -18f);
