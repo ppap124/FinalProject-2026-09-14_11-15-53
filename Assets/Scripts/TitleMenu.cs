@@ -161,6 +161,17 @@ public class TitleMenu : MonoBehaviour
         Text ver = Label(root, "Enter  게임 시작   ·   Esc  닫기", 16, new Color(dimText.r, dimText.g, dimText.b, 0.8f), TextAnchor.LowerRight, false);
         Place(ver.rectTransform, new Vector2(1f, 0f), new Vector2(-24f, 18f), new Vector2(600f, 24f));
 
+        // 최고 기록 — 왼쪽 아래, 오른쪽 단축키 줄과 짝. 한 판도 안 했으면 안 띄운다
+        if (GenesisRecords.Plays > 0)
+        {
+            string best = GenesisRecords.Wins > 0 ? "클리어 " + GenesisRecords.Wins + "회" : GenesisRecords.BestRound + "라운드";
+            string rec = "<color=#ffd873>최고 기록</color>   " + best
+                       + (GenesisRecords.BestChaos >= 0f ? "   ·   최단 카오스 " + GenesisRecords.Clock(GenesisRecords.BestChaos) : "")
+                       + "   ·   " + GenesisRecords.Plays + "판";
+            Text rt = Label(root, rec, 18, new Color(0.88f, 0.86f, 0.80f, 0.9f), TextAnchor.LowerLeft, true);
+            Place(rt.rectTransform, new Vector2(0f, 0f), new Vector2(24f, 16f), new Vector2(800f, 28f));
+        }
+
         BuildModal(root);
 
         // 맨 위 — 검은 막
@@ -468,6 +479,22 @@ public class TitleMenu : MonoBehaviour
         });
         ft = tb.GetComponentInChildren<Text>();
         tb.GetChild(0).GetComponent<RectTransform>().sizeDelta = new Vector2(200f, 58f);
+
+        // 처음 하는 사람용 안내 카드 — 한 번 끝까지 보면 안 뜬다. 여기서 되돌린다
+        Text gl = Label(modalContent, "초반 안내", 22, textColor, TextAnchor.MiddleLeft, true);
+        Place(gl.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -230f), new Vector2(300f, 40f));
+        gl.rectTransform.pivot = new Vector2(0f, 1f);
+        RectTransform gb = Rect("Guide", modalContent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, -224f), new Vector2(200f, 0f));
+        Text gt = null;
+        System.Func<string> guideLabel = () => PlayerPrefs.GetInt(GenesisHud.GuideDoneKey, 0) == 1 ? "다시 보기" : "켜짐";
+        Button(gb, guideLabel(), Vector2.zero, false, () =>
+        {
+            PlayerPrefs.DeleteKey(GenesisHud.GuideDoneKey);
+            PlayerPrefs.Save();
+            if (gt != null) gt.text = guideLabel();
+        });
+        gt = gb.GetComponentInChildren<Text>();
+        gb.GetChild(0).GetComponent<RectTransform>().sizeDelta = new Vector2(200f, 58f);
 
         Text note = Label(modalContent, "설정은 이 컴퓨터에 저장됩니다.", 17, dimText, TextAnchor.LowerLeft, false);
         Place(note.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(600f, 30f));

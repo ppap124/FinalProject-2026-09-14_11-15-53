@@ -210,6 +210,19 @@ public class Unit : MonoBehaviour
         cooldown = Mathf.Min(cooldown, 1f / Mathf.Max(0.01f, EffectiveAttackRate));   // 바로 빨라지게
     }
 
+    /// <summary>
+    /// 남이 걸어 주는 공속 증가 (케이론 스킬). 광폭화와 같은 칸을 쓰되, 이미 **더 센** 광폭화가
+    /// 걸려 있으면 덮지 않는다 — 베르세르크의 ×1.8 이 ×1.3 으로 깎이면 안 된다. 걸었으면 true
+    /// </summary>
+    public bool Inspire(float mult, float duration)
+    {
+        if (IsFrenzied && frenzyMult > mult) return false;
+        float until = Time.time + duration;
+        if (IsFrenzied && frenzyMult >= mult && frenzyUntil >= until) return false;
+        Frenzy(mult, Mathf.Max(duration, frenzyUntil - Time.time));
+        return true;
+    }
+
 
         public UnitType type = UnitType.Warrior;
 

@@ -222,6 +222,7 @@ public partial class GenesisHud : MonoBehaviour
         BuildBanner(cg.transform);
         BuildResult(cg.transform);
         BuildPause(cg.transform);
+        BuildGuide(cg.transform);
     }
 
     // ── 알림 띠 — 화면 가운데 위로 크게 뜨는 한 줄 (카오스 등장 등) ──
@@ -787,7 +788,7 @@ public partial class GenesisHud : MonoBehaviour
         resultGroup = result.gameObject.AddComponent<CanvasGroup>();
 
         RectTransform box = Rect("Box", result, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                                 new Vector2(0f, -40f), new Vector2(720f, 470f));
+                                 new Vector2(0f, -40f), new Vector2(760f, 510f));   // 기록 · 피해 순위 줄까지 네 줄
         Panel(box);
 
         // 문장은 판 위로 솟는다 — 콘솔의 날개 문장과 같은 문법
@@ -805,7 +806,7 @@ public partial class GenesisHud : MonoBehaviour
 
         resultStats = Label(box, "", 19, textColor, TextAnchor.UpperCenter, false);
         resultStats.lineSpacing = 1.25f;
-        Place(resultStats.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -262f), new Vector2(640f, 110f));
+        Place(resultStats.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -262f), new Vector2(720f, 150f));
         resultStats.rectTransform.pivot = new Vector2(0.5f, 1f);
 
         ResultButton(box, "다시 하기  (Enter)", new Vector2(-130f, 34f), () => GameLoop.Instance.Restart());
@@ -842,6 +843,7 @@ public partial class GenesisHud : MonoBehaviour
         HideTip();
         // 떠 있던 알림 띠는 걷는다 — 결과 창 뒤로 "히든 발견" 글자가 비쳐 보였다
         if (banner != null) banner.gameObject.SetActive(false);
+        if (guide != null) guide.gameObject.SetActive(false);   // 안내 카드도 — 끝난 판에서 "첫 조합"을 권할 일은 없다
 
         resultEmblem.sprite = won ? emblemVictory : emblemDefeat;
         resultTitle.text = won ? "승리" : "패배";
@@ -859,8 +861,74 @@ public partial class GenesisHud : MonoBehaviour
             "도달 라운드  <b>" + gl.Round + "</b>  ·  플레이 시간  <b>" + time + "</b>  ·  처치  <b>" + gl.Kills + "</b>\n" +
             "남은 유닛  <b>" + units + "</b>  ·  조합  <b>" + comb + "회</b>  ·  얻은 영혼  <b>" + souls + "</b>  ·  얻은 금화  <b>" + gold + "</b>";
 
+        // 기록 — 새로 세운 게 있으면 금색으로, 없으면 지금까지의 최고를 흐리게 (GenesisRecords)
+        GenesisRecords.Result rec = GenesisRecords.Submit(gl.Round, won, gl.ChaosFightTime);
+        if (rec.counted)
+        {
+            string line;
+            if (rec.firstWin)
+                line = "<color=#ffd873>★ 첫 클리어!  카오스 처치 " + GenesisRecords.Clock(gl.ChaosFightTime) + "</color>";
+            else if (rec.newChaos)
+                line = "<color=#ffd873>★ 최단 카오스 처치 " + GenesisRecords.Clock(gl.ChaosFightTime)
+                     + "</color>  <color=#9aa0b8>(이전 " + GenesisRecords.Clock(rec.prevChaos) + ")</color>";
+            else if (rec.newRound)
+                line = "<color=#ffd873>★ 최고 기록 " + gl.Round + "라운드</color>  <color=#9aa0b8>(이전 " + rec.prevRound + "라운드)</color>";
+            else
+                line = "<color=#9aa0b8>최고 기록  " + (GenesisRecords.Wins > 0 ? "클리어 " + GenesisRecords.Wins + "회" : GenesisRecords.BestRound + "라운드")
+                     + (GenesisRecords.BestChaos >= 0f ? "  ·  최단 카오스 " + GenesisRecords.Clock(GenesisRecords.BestChaos) : "") + "</color>";
+            resultStats.text += "\n" + line;
+        }
+
+        string rank = DamageRanking(5);
+        if (rank.Length > 0) resultStats.text += "\n<size=16><color=#9aa0b8>피해 순위</color>   " + rank + "</size>";
+
         // 마지막 장면이 조금 흐른 뒤에 뜬다 (GameLoop 가 느리게 흘리다 멈추는 사이)
         resultAt = Time.unscaledTime + 1.1f;
+    }
+
+    /// <summary>
+    /// 이번 판 피해를 **유닛 종류별로** 묶어 위에서 n개 — "제우스 34% · 오딘 22% …".
+    /// 기록(`Monster.DamageLog`)은 출처 이름으로 쌓인다: 평타는 "평타 · 이름", 스킬은 스킬 이름.
+    /// 스킬 이름을 그 스킬을 가진 유닛으로 되돌려 평타와 합친다 — "무엇을 키웠어야 했나"는 유닛 단위로 읽힌다
+    /// </summary>
+    static string DamageRanking(int n)
+    {
+        if (Monster.DamageLog.Count == 0) return "";
+
+        Dictionary<string, string> owner = new Dictionary<string, string>();
+        foreach (UnitType t in System.Enum.GetValues(typeof(UnitType)))
+        {
+            UnitSkill.Def d = UnitSkill.For(t);
+            if (d.kind != UnitSkill.Kind.None && !string.IsNullOrEmpty(d.name)) owner[d.name] = UnitTable.Get(t).name;
+        }
+        UnitSkill.Def oracle = UnitSkill.For(UnitType.Oracle);
+        string oracleName = UnitTable.Get(UnitType.Oracle).name;
+
+        Dictionary<string, float> byUnit = new Dictionary<string, float>();
+        float total = 0f;
+        foreach (KeyValuePair<string, float> kv in Monster.DamageLog)
+        {
+            string key = kv.Key, who;
+            if (key.StartsWith("평타 · ")) who = key.Substring("평타 · ".Length);
+            else if (owner.TryGetValue(key, out who)) { }
+            else if (key.StartsWith(oracle.name)) who = oracleName;   // "약점 간파 (늘어난 몫)"
+            else who = "기타";
+            float sum;
+            byUnit.TryGetValue(who, out sum);
+            byUnit[who] = sum + kv.Value;
+            total += kv.Value;
+        }
+        if (total <= 0f) return "";
+
+        List<KeyValuePair<string, float>> list = new List<KeyValuePair<string, float>>(byUnit);
+        list.Sort((a, b) => b.Value.CompareTo(a.Value));
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        for (int i = 0; i < list.Count && i < n; i++)
+        {
+            if (i > 0) sb.Append("  ·  ");
+            sb.Append(list[i].Key).Append(" <b>").Append(Mathf.RoundToInt(list[i].Value / total * 100f)).Append("%</b>");
+        }
+        return sb.ToString();
     }
 
     void UpdateResult()
@@ -971,6 +1039,7 @@ public partial class GenesisHud : MonoBehaviour
         if (canvas != null) GameLoop.DebugTop = topBarHeight * canvas.scaleFactor + 8f;
         UpdateResources();
         if (GameLoop.Instance != null && GameLoop.Instance.IsOver) return;   // 끝나면 명령 칸과 선택은 멈춘다
+        GuideTick();
         HandleSlotKeys();
         if (Time.unscaledTime < refreshAt) return;
         refreshAt = Time.unscaledTime + 0.1f;

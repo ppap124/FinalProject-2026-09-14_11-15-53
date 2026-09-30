@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 2 · 3 · 4단계 고유 스킬. **N번째 공격마다** 발동한다 (확률이 아니다 — 언제 터질지 보여야
+/// 2 · 3 · 4단계와 히든의 고유 스킬. **N번째 공격마다** 발동한다 (확률이 아니다 — 언제 터질지 보여야
 /// 배치를 계획할 수 있고, 명령 칸의 충전 칸 "3/6" 이 그 약속이다).
 ///
 /// 2단계는 문화권 성격을 따른다 — 그리스는 광역 · 체급, 북유럽은 공속 · 처형, 한국은 한방 · 홀림.
@@ -25,6 +25,9 @@ using UnityEngine;
 /// | 제우스 | 연쇄 번개 | 가까운 적을 차례로 튀는 번개 |
 /// | 오딘 | 궁니르 | 사거리 안에서 체력이 가장 많은 적에게 큰 한 방 (보스 사냥) |
 /// | 환웅 | 풍백 · 우사 · 운사 | 필드 전체에 비바람 — 모두에게 피해 + 감속 |
+/// | 케이론 (히든) | 영웅의 스승 | 둘레 아군 공속 증가 — 하나뿐인 아군 강화 |
+/// | 에인헤랴르 (히든) | 끝나지 않는 전투 | 큰 한 방 — 그걸로 잡으면 다음 공격에 또 |
+/// | 주몽 (히든) | 백발백중 | 사거리 끝의 적에게 큰 한 방 + 묶기 |
 ///
 /// 피해는 전부 **유닛의 실제 공격력(시너지 · 연구 포함) 배수**라 강화가 스킬에도 먹는다.
 /// 수치는 이 파일 `For` 한 곳에서 고친다. 연출은 코드로 만든다 (`SkillFx`).
@@ -34,7 +37,8 @@ public class UnitSkill : MonoBehaviour
     public enum Kind
     {
         None, Quake, Frost, Pierce, Chain, Spear, Storm,
-        Gore, Feathers, Expose, Frenzy, Judgement, RuneBind, Treasure, Talisman, Charm
+        Gore, Feathers, Expose, Frenzy, Judgement, RuneBind, Treasure, Talisman, Charm,
+        Inspire, Endless, Snipe
     }
 
     public struct Def
@@ -122,6 +126,23 @@ public class UnitSkill : MonoBehaviour
                 return new Def { kind = Kind.Storm, name = "풍백 · 우사 · 운사", every = 6, power = 0.4f, effect = 0.4f, duration = 2.5f,
                                  color = new Color(0.75f, 0.9f, 1f),
                                  desc = "6번째 공격마다 바람 · 비 · 구름을 불러 필드의 적 모두에게 공격력 ×0.4 피해를 주고 2.5초 동안 40% 느리게 합니다." };
+
+            // ── 히든 — 시너지가 없고 더 못 올라가는 대신, 재료 유닛의 성격을 잇는 스킬 ──
+            case UnitType.Chiron:
+                // 스승 — 유일한 **아군 강화** 스킬. 피해는 가르친 유닛들 몫으로 쌓인다
+                return new Def { kind = Kind.Inspire, name = "영웅의 스승", every = 8, radius = 8f, effect = 1.3f, duration = 4f,
+                                 color = new Color(1f, 0.82f, 0.45f),
+                                 desc = "8번째 공격마다 둘레 8 안의 아군 모두의 공격 속도를 4초 동안 ×1.3 올립니다. (더 센 광폭화는 덮지 않습니다)" };
+            case UnitType.Einherjar:
+                // 죽지 않는 전사 — 잡으면 곧바로 다음 한 방. 약한 몹이 줄지어 올 때 연달아 터진다
+                return new Def { kind = Kind.Endless, name = "끝나지 않는 전투", every = 5, power = 3f,
+                                 color = new Color(0.65f, 0.8f, 1f),
+                                 desc = "5번째 공격마다 공격력 ×3 으로 벱니다. 그 한 방으로 쓰러뜨리면 바로 다음 공격에 다시 씁니다." };
+            case UnitType.Jumong:
+                // 신궁 — 사거리 끝의 적을 꿰어 묶는다. 가까운 적을 먼저 치는 평타와 반대편을 맡는다
+                return new Def { kind = Kind.Snipe, name = "백발백중", every = 4, power = 4f, effect = 1f,
+                                 color = new Color(1f, 0.55f, 0.4f),
+                                 desc = "4번째 공격마다 사거리 안에서 가장 먼 적에게 화살을 꽂아 공격력 ×4 피해를 주고 1초 묶습니다. (보스는 짧게)" };
         }
         return new Def { kind = Kind.None };
     }
@@ -332,6 +353,54 @@ public class UnitSkill : MonoBehaviour
                     SkillFx.Beam(from, p, def.color, 0.18f, 0.4f, true);
                     SkillFx.Halo(m.transform, m, 0.9f, TopOf(m) + 0.3f, def.color, def.duration);
                 }
+                break;
+            }
+
+            // ── 히든 ──
+
+            case Kind.Inspire:
+            {
+                Vector3 c = Ground(unit.transform.position);
+                float r2 = def.radius * def.radius;
+                if (SoulShop.Instance != null)
+                    foreach (Unit u in SoulShop.Instance.Units)
+                    {
+                        if (u == null || u == unit) continue;
+                        Vector3 d = u.transform.position - unit.transform.position; d.y = 0f;
+                        if (d.sqrMagnitude > r2) continue;
+                        if (u.Inspire(def.effect, def.duration))
+                            SkillFx.Halo(u.transform, null, 1.1f, 0.15f, def.color, def.duration);
+                    }
+                SkillFx.Shock(c, def.radius, def.color, 0.6f, 0.25f);
+                SkillFx.Sparks(c, def.color, 26, 5f, 0.9f);
+                break;
+            }
+
+            case Kind.Endless:
+            {
+                Vector3 p = target.transform.position;
+                SkillFx.Beam(p + new Vector3(-1.4f, 2.6f, 0f), p + new Vector3(1.4f, 0.3f, 0f), def.color, 0.35f, 0.18f);
+                SkillFx.Shock(at, 2f, def.color, 0.3f, 0.3f);
+                target.TakeDamage(dmg);
+                if (target.IsDying)
+                {
+                    Count = def.every - 1;   // 다음 공격이 곧 스킬 — 명령 칸 충전도 꽉 찬다
+                    SkillFx.Sparks(at, Color.white, 18, 6f, 0.5f);
+                }
+                break;
+            }
+
+            case Kind.Snipe:
+            {
+                Monster prey = gl.FindFarthest(unit.transform.position, unit.range);
+                if (prey == null) prey = target;
+                Vector3 from = unit.transform.position + Vector3.up * 1.8f;
+                Vector3 p = prey.transform.position + Vector3.up * 0.7f;
+                SkillFx.Beam(from, p, def.color, 0.16f, 0.3f);
+                SkillFx.Shock(Ground(p), 1.8f, def.color, 0.35f, 0.3f);
+                SkillFx.Sparks(Ground(p), def.color, 20, 7f, 0.5f);
+                prey.Stun(def.effect);
+                prey.TakeDamage(dmg);
                 break;
             }
         }

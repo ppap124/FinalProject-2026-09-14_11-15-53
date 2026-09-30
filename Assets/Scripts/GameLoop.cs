@@ -110,6 +110,7 @@ public class GameLoop : MonoBehaviour
     Monster chaos;
     float overAt = -1f;
     float endPlayTime;
+    float chaosFightFrom = -1f, chaosFightTime = -1f;
     int kills;
 
     public int AliveCount => alive.Count;
@@ -121,6 +122,8 @@ public class GameLoop : MonoBehaviour
     public bool IsFinalRound => round >= finalRound;
     public Monster Chaos => chaos;
     public int Kills => kills;
+    /// <summary>카오스를 쓰러뜨리는 데 걸린 시간(게임 초, 등장 연출 뺀 것). 못 쓰러뜨렸으면 -1</summary>
+    public float ChaosFightTime => chaosFightTime;
     /// <summary>판을 시작한 뒤 흐른 게임 시간(초). 끝났으면 끝난 순간에서 멈춘다</summary>
     public float PlayTime => overAt >= 0f ? endPlayTime : Time.timeSinceLevelLoad;
 
@@ -140,6 +143,8 @@ public class GameLoop : MonoBehaviour
     void Start()
     {
         if (route == null) route = FindFirstObjectByType<PathRoute>();
+        // 피해 기록은 static 이라 다시 하기(씬 다시 읽기)에도 남는다 — 판마다 비운다 (결과 창 피해 순위)
+        Monster.DamageLog.Clear();
         EnterPrep();
     }
 
@@ -315,6 +320,7 @@ public class GameLoop : MonoBehaviour
         alive.Add(m);
         bosses.Add(m);
         chaos = m;
+        chaosFightFrom = Time.time;
 
         // 등장 연출 — 빛기둥 · 충격파 · 떠오름. 머무는 동안은 제한 시간을 깎지 않는다
         if (chaosIntro)
@@ -324,6 +330,7 @@ public class GameLoop : MonoBehaviour
             intro.subtitle = $"혼돈이 깨어납니다 — {finalTimeLimit:0}초 안에 쓰러뜨리세요";
             intro.Begin();
             timer += intro.hold;
+            chaosFightFrom += intro.hold;
         }
 
         Debug.Log($"[최종] 카오스 등장   체력 {ChaosHp:N0}   제한 {finalTimeLimit:0}초");
@@ -512,6 +519,25 @@ public class GameLoop : MonoBehaviour
         return best;
     }
 
+    /// <summary>사거리 안에서 가장 먼 적 — 주몽의 백발백중. 평타(가까운 적)와 반대쪽을 맡는다</summary>
+    public Monster FindFarthest(Vector3 from, float range)
+    {
+        float sqr = range * range;
+        Monster best = null;
+        float bestSqr = -1f;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            float s = d.sqrMagnitude;
+            if (s > sqr || s <= bestSqr) continue;
+            bestSqr = s; best = m;
+        }
+        return best;
+    }
+
     /// <summary>범위 피해 — 그리스 ★ 시너지용. 중심 대상은 제외한다.</summary>
     public void DamageArea(Vector3 center, float radius, float damage, Monster except)
     {
@@ -534,6 +560,7 @@ public class GameLoop : MonoBehaviour
     void Victory()
     {
         if (phase == Phase.Over) return;
+        if (chaosFightFrom >= 0f) chaosFightTime = Mathf.Max(0f, Time.time - chaosFightFrom);
         End(true, "카오스 격파");
         Debug.Log($"[결과] 승리 — {round}라운드 카오스 격파   {PlayTime:0}초   처치 {kills}");
     }
