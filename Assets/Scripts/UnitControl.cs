@@ -72,7 +72,7 @@ public class UnitControl : MonoBehaviour
         Keyboard k = Keyboard.current;
         if (m == null) return;
 
-        if (GenesisHud.Paused) { dragging = false; return; }
+        if (GenesisHud.Paused) { dragging = false; UpdateHover(Vector2.zero, false); return; }
         // HUD 가 있으면 Esc 는 HUD 가 맡는다 (선택이 있으면 해제, 없으면 일시정지 메뉴)
         if (k != null && k.escapeKey.wasPressedThisFrame && !GenesisHud.HandlesEscape) ClearSelection();
 
@@ -99,6 +99,8 @@ public class UnitControl : MonoBehaviour
         }
 
         if (m.rightButton.wasPressedThisFrame && !overUi) IssueMove(m.position.ReadValue());
+
+        UpdateHover(m.position.ReadValue(), !overUi && !dragging);
     }
 
     // ── 선택 ──────────────────────────────────
@@ -227,42 +229,98 @@ public class UnitControl : MonoBehaviour
         }
     }
 
+    // ── 고르기 판정 ──────────────────────────
+    // 예전엔 발밑 실린더(반지름 0.9 · 높이 1.6)에 광선을 쏴서, 비스듬한 카메라로 보이는 몸통이나 머리를 누르면
+    // 빗나갔다. 이제 **화면에서** 잰다 — 발에서 머리까지 이은 선에 커서가 몸 폭 + pickRadius 안이면 잡히고,
+    // 여럿이면 선에 가장 가까운 것. 대충 근처를 눌러도 잡히고, 겹쳐 있으면 커서 쪽이 잡힌다
+
+    [Tooltip("클릭 여유(1080 기준 픽셀) — 몸통 선에서 이만큼 + 몸 폭 반 안이면 잡힌다")]
+    public float pickRadius = 22f;
+
+    readonly Dictionary<Unit, float> bodyHeights = new Dictionary<Unit, float>();
+
+    /// <summary>발바닥에서 모델 머리까지 높이(월드). 모델 렌더러 범위로 한 번 재 둔다</summary>
+    float BodyHeight(Unit u)
+    {
+        float h;
+        if (bodyHeights.TryGetValue(u, out h)) return h;
+        float ground = u.transform.position.y - u.transform.localScale.y;   // 실린더 반높이 = scale.y
+        float top = float.MinValue;
+        foreach (Renderer r in u.GetComponentsInChildren<Renderer>())
+        {
+            if (!r.enabled || r is LineRenderer || r is ParticleSystemRenderer || r is TrailRenderer) continue;
+            if (r.gameObject == u.gameObject) continue;   // 실린더 자신
+            top = Mathf.Max(top, r.bounds.max.y);
+        }
+        h = top > ground ? Mathf.Min(top - ground, 8f) : u.transform.localScale.y * 2f;
+        if (top > ground) bodyHeights[u] = h;   // 모델이 아직 없으면 다음에 다시 잰다
+        return h;
+    }
+
+    /// <summary>커서에서 발~머리 선까지 화면 거리를 그 몸의 잡히는 반경으로 나눈 값. 1 이하면 잡힌다</summary>
+    float PickScore(Vector2 p, Vector3 foot, float height, float halfWidth)
+    {
+        Vector3 a = cam.WorldToScreenPoint(foot), b = cam.WorldToScreenPoint(foot + Vector3.up * height);
+        if (a.z <= 0f || b.z <= 0f) return float.MaxValue;
+        Vector3 side = cam.WorldToScreenPoint(foot + cam.transform.right * halfWidth);
+        float radius = Vector2.Distance(a, side) + pickRadius * Screen.height / 1080f;
+
+        Vector2 A = a, ab = (Vector2)b - A;
+        float t = ab.sqrMagnitude < 0.01f ? 0f : Mathf.Clamp01(Vector2.Dot(p - A, ab) / ab.sqrMagnitude);
+        return Vector2.Distance(p, A + ab * t) / radius;
+    }
+
     SoulAvatar SoulUnderCursor(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
         SoulAvatar best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
+        float bestScore = 1f;
+        foreach (SoulAvatar s in SoulAvatar.All)
         {
-            SoulAvatar s = h.collider.GetComponentInParent<SoulAvatar>();
-            if (s == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = s; }
+            if (s == null || s.Consumed) continue;
+            Vector3 sc = s.transform.localScale;
+            float score = PickScore(screenPos, s.transform.position - Vector3.up * sc.y, sc.y * 2.2f, sc.x * 0.5f);
+            if (score <= bestScore) { bestScore = score; best = s; }
         }
-
         return best;
     }
 
     Unit UnitUnderCursor(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
+        if (SoulShop.Instance == null) return null;
         Unit best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
+        float bestScore = 1f;
+        foreach (Unit u in SoulShop.Instance.Units)
         {
-            Unit u = h.collider.GetComponentInParent<Unit>();
             if (u == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = u; }
+            Vector3 foot = u.transform.position - Vector3.up * u.transform.localScale.y;
+            float score = PickScore(screenPos, foot, BodyHeight(u), u.transform.localScale.x * 0.35f);
+            if (score <= bestScore) { bestScore = score; best = u; }
         }
-
         return best;
+    }
+
+    // ── 올려 두기 — 누르기 전에 무엇이 잡힐지 흐린 고리로 보인다 ──
+
+    Unit hoverUnit;
+    SoulAvatar hoverSoul;
+
+    void UpdateHover(Vector2 screenPos, bool show)
+    {
+        SoulAvatar s = show ? SoulUnderCursor(screenPos) : null;
+        Unit u = show && s == null ? UnitUnderCursor(screenPos) : null;   // 고를 때와 같은 순서 — 영혼이 먼저
+
+        if (s != hoverSoul) { if (hoverSoul != null) hoverSoul.SetHover(false); hoverSoul = s; }
+        if (u != hoverUnit) { if (hoverUnit != null) hoverUnit.SetHover(false); hoverUnit = u; }
+        if (hoverSoul != null) hoverSoul.SetHover(true);   // 고른 뒤 풀렸다 다시 올라와도 켜지게 매번
+        if (hoverUnit != null) hoverUnit.SetHover(true);
+
+        // 조합 · 창고로 사라진 유닛의 키 높이는 버린다 — 판 내내 사전이 자라지 않게
+        if (bodyHeights.Count > 120)
+        {
+            List<Unit> gone = new List<Unit>();
+            foreach (Unit k in bodyHeights.Keys) if (k == null) gone.Add(k);
+            foreach (Unit k in gone) bodyHeights.Remove(k);
+        }
     }
 
     void SelectSoul(SoulAvatar s)

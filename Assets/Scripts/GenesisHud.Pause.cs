@@ -21,8 +21,8 @@ public partial class GenesisHud
     public static bool HandlesEscape { get; private set; }
 
     RectTransform pause, pauseMain, pauseSettings, pauseConfirm;
-    Text pauseHeading, confirmText, fullText, volText;
-    Slider volSlider;
+    Text pauseHeading, confirmText, fullText, volText, musText;
+    Slider volSlider, musSlider;
     System.Action confirmAct;
     Text confirmYes;
     float pausedScale = 1f;
@@ -59,10 +59,10 @@ public partial class GenesisHud
         // ── 설정 ── (타이틀 설정 창과 같은 값 · 같은 저장 키)
         pauseSettings = View(box, "Settings");
         Text vl = Label(pauseSettings, "효과음 크기", 22, textColor, TextAnchor.MiddleLeft, true);
-        Place(vl.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -150f), new Vector2(260f, 40f));
+        Place(vl.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -132f), new Vector2(260f, 40f));
         volText = Label(pauseSettings, "", 22, goldText, TextAnchor.MiddleRight, true);
-        Place(volText.rectTransform, new Vector2(1f, 1f), new Vector2(-60f, -150f), new Vector2(120f, 40f));
-        volSlider = MakeSlider(pauseSettings, new Vector2(0f, -204f), 440f);
+        Place(volText.rectTransform, new Vector2(1f, 1f), new Vector2(-60f, -132f), new Vector2(120f, 40f));
+        volSlider = MakeSlider(pauseSettings, new Vector2(0f, -180f), 440f);
         volSlider.onValueChanged.AddListener(v =>
         {
             PlayerPrefs.SetFloat(GenesisAudio.VolumeKey, v);
@@ -70,22 +70,33 @@ public partial class GenesisHud
             if (GenesisAudio.Instance != null) GenesisAudio.Instance.sfxVolume = v;
         });
 
+        Text ml = Label(pauseSettings, "배경음 크기", 22, textColor, TextAnchor.MiddleLeft, true);
+        Place(ml.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -218f), new Vector2(260f, 40f));
+        musText = Label(pauseSettings, "", 22, goldText, TextAnchor.MiddleRight, true);
+        Place(musText.rectTransform, new Vector2(1f, 1f), new Vector2(-60f, -218f), new Vector2(120f, 40f));
+        musSlider = MakeSlider(pauseSettings, new Vector2(0f, -266f), 440f);
+        musSlider.onValueChanged.AddListener(v =>
+        {
+            GenesisAudio.SetMusicLevel(v);
+            musText.text = Mathf.RoundToInt(v * 100f) + "%";
+        });
+
         Text fl = Label(pauseSettings, "전체 화면", 22, textColor, TextAnchor.MiddleLeft, true);
-        Place(fl.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -262f), new Vector2(260f, 40f));
-        RectTransform fb = MenuButton(pauseSettings, "", -256f, () =>
+        Place(fl.rectTransform, new Vector2(0f, 1f), new Vector2(60f, -312f), new Vector2(260f, 40f));
+        RectTransform fb = MenuButton(pauseSettings, "", -306f, () =>
         {
             Screen.fullScreen = !Screen.fullScreen;
             fullText.text = !Screen.fullScreen ? "켬" : "끔";   // 바뀌는 건 다음 프레임이라 거꾸로 적는다
         });
         fb.anchorMin = fb.anchorMax = fb.pivot = new Vector2(1f, 1f);
-        fb.anchoredPosition = new Vector2(-60f, -252f);
+        fb.anchoredPosition = new Vector2(-60f, -302f);
         fb.sizeDelta = new Vector2(150f, 54f);
         fullText = fb.GetComponentInChildren<Text>();
         fullText.rectTransform.sizeDelta = new Vector2(130f, 40f);
 
         Text note = Label(pauseSettings, "설정은 이 컴퓨터에 저장됩니다.", 17, dimText, TextAnchor.MiddleCenter, false);
-        Place(note.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -336f), new Vector2(440f, 30f));
-        MenuButton(pauseSettings, "뒤로   (Esc)", -408f, () => ShowPauseView(pauseMain));
+        Place(note.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -372f), new Vector2(440f, 30f));
+        MenuButton(pauseSettings, "뒤로   (Esc)", -424f, () => ShowPauseView(pauseMain));
 
         // ── 확인 ──
         pauseConfirm = View(box, "Confirm");
@@ -142,7 +153,10 @@ public partial class GenesisHud
         RectTransform area = Rect("FillArea", r, new Vector2(0f, 0.3f), new Vector2(1f, 0.7f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         RectTransform fillR = Rect("Fill", area, Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero);
         fillR.gameObject.AddComponent<Image>().color = new Color(goldText.r * 0.85f, goldText.g * 0.75f, goldText.b * 0.5f, 1f);
+        // 손잡이 반 폭(11)만큼 안쪽에서 움직인다 — 끝까지 가면 손잡이가 막대 밖으로 튀어나왔다
+        area.offsetMax = new Vector2(-11f, 0f);   // 채움은 왼쪽 끝부터 — 끝은 손잡이 밑에 숨는다
         RectTransform ha = Rect("HandleArea", r, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        ha.offsetMin = new Vector2(11f, 0f); ha.offsetMax = new Vector2(-11f, 0f);
         RectTransform h = Rect("Handle", ha, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(22f, 0f));
         Image hi = h.gameObject.AddComponent<Image>();
         hi.color = goldText;
@@ -215,6 +229,9 @@ public partial class GenesisHud
                                              GenesisAudio.Instance != null ? GenesisAudio.Instance.sfxVolume : 0.8f);
             volSlider.SetValueWithoutNotify(vol);
             volText.text = Mathf.RoundToInt(vol * 100f) + "%";
+            float mus = GenesisAudio.MusicLevel;
+            musSlider.SetValueWithoutNotify(mus);
+            musText.text = Mathf.RoundToInt(mus * 100f) + "%";
             fullText.text = Screen.fullScreen ? "켬" : "끔";
         }
     }

@@ -416,11 +416,4 @@ public class UnitCombiner : MonoBehaviour
 
         return false;
     }
-
-    Unit FindOther(UnitType t, Unit except)
-    {
-        foreach (Unit x in SoulShop.Instance.Units)
-            if (x != null && x != except && x.type == t) return x;
-        return null;
-    }
 }

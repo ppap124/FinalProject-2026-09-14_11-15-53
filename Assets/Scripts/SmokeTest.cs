@@ -26,7 +26,7 @@ public class SmokeTest : MonoBehaviour
     static float speed = 1f;
     static int slowFrom = -1;
     static BalanceBot.Style bot = BalanceBot.Style.Good;
-    static float hpGrowth = -1f, chaosHp = -1f;
+    static float hpGrowth = -1f, chaosHp = -1f, bossMult = -1f;
 
     int lastRankRound;
     bool hpSet;
@@ -62,6 +62,12 @@ public class SmokeTest : MonoBehaviour
                 float h;
                 if (float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
                                    System.Globalization.CultureInfo.InvariantCulture, out h)) hpGrowth = h;
+            }
+            else if (args[i] == "-genesis-boss" && i + 1 < args.Length)
+            {
+                float bm;
+                if (float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float,
+                                   System.Globalization.CultureInfo.InvariantCulture, out bm)) bossMult = bm;
             }
             else if (args[i] == "-genesis-chaos" && i + 1 < args.Length)
             {
@@ -104,7 +110,8 @@ public class SmokeTest : MonoBehaviour
             hpSet = true;
             if (hpGrowth > 0f) gl.hpGrowth = hpGrowth;
             if (chaosHp > 0f) gl.chaosHp = chaosHp;
-            Debug.Log(Tag + "체력 곡선 " + gl.hpGrowth + " · 카오스 " + gl.ChaosHp.ToString("N0")
+            if (bossMult > 0f) gl.bossHpMult = bossMult;
+            Debug.Log(Tag + "체력 곡선 " + gl.hpGrowth + " · 카오스 " + gl.ChaosHp.ToString("N0") + " · 보스 배수 " + gl.bossHpMult
                       + " · 인구 " + (SoulShop.Instance != null ? SoulShop.Instance.unitCap : -1));
         }
 

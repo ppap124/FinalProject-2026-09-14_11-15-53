@@ -105,12 +105,32 @@ public class Unit : MonoBehaviour
             // **꽉 찬 원반이 아니라 가는 고리로.** 전에는 밝은 초록 원반을 깔았는데,
             // 3·4단계는 발밑에 금빛 오라가 돌아서 초록 면과 노란 빛이 겹쳐 눈이 아팠다.
             // 고리를 오라 바깥에 그리면 둘이 겹치지 않는다
-            MakeRing(transform, Mathf.Max(transform.localScale.x * 0.62f, auraRadius + 0.3f));
+            MakeRing(transform, RingRadius);
+            SetHover(false);   // 고르면 흐린 고리는 걷는다 — 선택 고리와 겹쳐 두껍게 보였다
         }
         else if (!on && ring != null)
         {
             Destroy(ring.gameObject);
         }
+    }
+
+    float RingRadius => Mathf.Max(transform.localScale.x * 0.62f, auraRadius + 0.3f);
+
+    /// <summary>마우스가 올라가 있다 — 누르면 이 유닛이 잡힌다는 걸 미리 흐린 고리로 보인다 (UnitControl)</summary>
+    public void SetHover(bool on) { HoverRing(transform, on && !IsSelected, RingRadius); }
+
+    /// <summary>흐린 흰 고리 — 선택 고리(초록)와 같은 자리, 같은 굵기. 유닛과 영혼이 같이 쓴다</summary>
+    public static void HoverRing(Transform owner, bool on, float worldRadius)
+    {
+        Transform ring = owner.Find("HoverRing");
+        if (on && ring == null)
+        {
+            GameObject g = MakeRing(owner, worldRadius);
+            g.name = "HoverRing";
+            LineRenderer lr = g.GetComponent<LineRenderer>();
+            lr.startColor = lr.endColor = new Color(1f, 1f, 1f, 0.7f);   // 0.45 는 밝은 제단 위에서 안 보였다
+        }
+        else if (!on && ring != null) Destroy(ring.gameObject);
     }
 
     void MoveTick()
@@ -488,6 +508,13 @@ public float range = 10f;
         {
             p.MakeInstant(0f);
             AttackFx.Lightning(target.transform.position + Vector3.up * 0.6f, col, 14f);
+        }
+
+        // 공격음 — 근접은 칼이 **닿는 순간**(발사체가 터질 때), 나머지는 쏘는 순간
+        if (fx != null)
+        {
+            if (style == AttackStyle.Melee) p.SetHitSound(fx.attackSounds, fx.attackVolume);
+            else GenesisAudio.PlayAttack(fx.attackSounds, fx.attackVolume);
         }
 
         if (Syn != null)

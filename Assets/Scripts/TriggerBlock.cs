@@ -35,8 +35,6 @@ public class TriggerBlock : MonoBehaviour
     public string LastResult { get; private set; } = "";
     public float LastResultTime { get; private set; } = -99f;
 
-    bool recipeOpenedByMe;
-
     void Update()
     {
         if (action == Action.ShowRecipe) { RecipeTick(); return; }

@@ -82,11 +82,6 @@ public class SoulShop : MonoBehaviour
         return p;
     }
 
-    public bool IsInArea(Vector3 p)
-    {
-        return Mathf.Abs(p.x) <= innerOffset && Mathf.Abs(p.z) <= innerOffset;
-    }
-
     public bool CanPull()
     {
         return !AtCap && SoulBank.Instance != null && SoulBank.Instance.CanAfford(unitPullCost);

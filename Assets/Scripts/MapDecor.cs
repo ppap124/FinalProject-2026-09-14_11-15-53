@@ -725,8 +725,6 @@ public class MapDecor : MonoBehaviour
     [Tooltip("다리 돌 색 보정 — 원본은 베이지 석재라 남색 판 위에서 뜬다")]
     public Color bridgeTint = new Color(0.55f, 0.60f, 0.78f, 1f);
 
-    [Tooltip("창고 밑색에 곱할 색. 돔보다 약하게")]
-    public Color warehouseTint = new Color(0.80f, 0.82f, 0.90f, 1f);
     public GameObject warehouseProp;
     public float buildingHeight = 5.5f;
 
@@ -2192,7 +2190,6 @@ public class MapDecor : MonoBehaviour
 
         // 발광이 세면 색이 흰색으로 날아간다 — 0.8 정도라야 금/초록이 남는다
         Material glow = MakeGlow("pad_" + tag, col, 0.8f);
-        Material post = Get("trim");
 
         // 귀퉁이 기둥 넷 — 패드 반경 1.9 밖에 둔다.
         // 제단 + 문양이 있으면 뺀다 — 문 패드엔 기둥이 없어서 셋이 서로 달라 보였다
@@ -4155,15 +4152,6 @@ public class MapDecor : MonoBehaviour
 
         if (Application.isPlaying) Destroy(c);
         else DestroyImmediate(c);
-    }
-
-    /// <summary>프롭 전체를 한 재질로 칠한다. 생성 모델이 색을 안 달고 올 때 쓴다.</summary>
-    void PaintProp(GameObject g, string key)
-    {
-        if (g == null) return;
-
-        foreach (Renderer r in g.GetComponentsInChildren<Renderer>(true))
-            Paint(r.gameObject, key);
     }
 
     void Paint(GameObject g, string key)

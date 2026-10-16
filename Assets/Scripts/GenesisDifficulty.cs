@@ -46,28 +46,31 @@ public static class GenesisDifficulty
         }
     }
 
-    /// <summary>몹 체력 곡선 — 라운드마다 곱한다</summary>
+    /// <summary>
+    /// 몹 체력 곡선 — 라운드마다 곱한다. 어려움 1.25 → 1.24 · 카오스 1.26 → 1.245 (2026-10-06, §65): 잘하는 봇이 둘 다 0/3 —
+    /// 보스가 아니라 46~49라운드에 필드가 100 마리로 차서 졌다. 0.01 차이가 49라운드 몹 체력을 1.5배 바꾼다
+    /// </summary>
     public static float HpGrowth(Level d)
     {
         switch (d)
         {
-            case Level.Hard:  return 1.25f;
-            case Level.Chaos: return 1.26f;
+            case Level.Hard:  return 1.24f;
+            case Level.Chaos: return 1.245f;
             default:          return 1.23f;
         }
     }
 
     /// <summary>
-    /// 카오스(50라운드) 체력. 1500만 → 7000만 (2026-09-30): 카오스가 벽 너머 하늘에 떠서 **모든 유닛이 늘 친다**(§61) —
-    /// 길을 걸을 땐 사거리 안에 든 유닛만 쳤다. 잘하는 봇이 1500만을 13~20초에 잡았다. 8000만에서 73 · 85초 · 한 판은 10% 남기고 시간 초과 → 7000만
+    /// 카오스(50라운드) 체력. 1500만 → 7000만 (2026-09-30) → 5500만 (2026-10-06): 카오스가 벽 너머 하늘에 떠서 **모든 유닛이 늘 친다**(§61) —
+    /// 길을 걸을 땐 사거리 안에 든 유닛만 쳤다. 잘하는 봇이 1500만을 13~20초에 잡았다. 8000만에서 73 · 85초 · 한 판은 10% 남기고 시간 초과 → 7000만. 7000만에서 잘하는 봇 6판 104~120초 · 2판 시간 초과 → 5500만
     /// </summary>
     public static float ChaosHp(Level d)
     {
         switch (d)
         {
-            case Level.Hard:  return 70000000f;
-            case Level.Chaos: return 70000000f;
-            default:          return 70000000f;
+            case Level.Hard:  return 55000000f;
+            case Level.Chaos: return 65000000f;   // 곡선만으론 어려움과 승률이 같았다 — 마지막 보스를 더 세게
+            default:          return 55000000f;
         }
     }
 

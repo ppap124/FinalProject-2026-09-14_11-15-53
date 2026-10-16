@@ -241,14 +241,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenesisAudio
   bgmNormal: {fileID: 0}
+  bgmLate: {fileID: 0}
+  lateFrom: 25
   bgmBoss: {fileID: 0}
   bgmFinal: {fileID: 0}
   bgmVictory: {fileID: 0}
   bgmDefeat: {fileID: 0}
   bgmVolume: 0.35
   crossfade: 1.8
-  click: {fileID: 8300000, guid: 46ea7d9b9a0596a449b9946f17309cf1, type: 3}
-  denied: {fileID: 8300000, guid: 966ca5d7f60b7c444b531a7c768accc2, type: 3}
+  click: {fileID: 8300000, guid: c230389cdba1a4d47bda71c4d0e2b6f9, type: 3}
+  denied: {fileID: 8300000, guid: 8e746bda97a9f634f9c225c03bd4bfcb, type: 3}
   summon: {fileID: 0}
   material: {fileID: 0}
   gold: {fileID: 0}
@@ -260,12 +262,19 @@ MonoBehaviour:
   roundStart: {fileID: 0}
   boss: {fileID: 0}
   chaos: {fileID: 0}
+  chaosRumble: {fileID: 0}
+  bossEmerge: {fileID: 0}
+  bossDown: {fileID: 0}
+  danger: {fileID: 0}
   kill: {fileID: 0}
   victory: {fileID: 0}
   defeat: {fileID: 0}
   sfxVolume: 0.8
   killVolume: 0.3
   minGap: 0.07
+  attackGap: 0.18
+  attackVoices: 3
+  attackWindow: 0.15
 --- !u!4 &563593616
 Transform:
   m_ObjectHideFlags: 0

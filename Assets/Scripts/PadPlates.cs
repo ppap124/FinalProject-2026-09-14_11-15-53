@@ -28,6 +28,7 @@ public class PadPlates : MonoBehaviour
 
     void OnGUI()
     {
+        if (!glyphsWarm) { glyphsWarm = true; WarmGlyphs(hud != null ? hud : (hud = FindFirstObjectByType<GenesisHud>())); }
         if (cam == null) cam = Camera.main;
         if (cam == null) return;
         if (pads == null) pads = FindObjectsByType<TriggerBlock>(FindObjectsSortMode.None);
@@ -144,7 +145,7 @@ public class PadPlates : MonoBehaviour
             int n = 0;
             foreach (UnitType t in wh.Kinds()) n += wh.Get(t);
             string line = n > 0 ? "보관 " + n + "마리" + (wh.CanMove ? "" : " · 꺼내기는 준비 시간에")
-                                : "비어 있음 · 유닛을 골라 D";
+                                : "비어 있음 · 유닛을 골라 C";
             Plate(Front(warehouseBox), "창고", line, WarehouseCol, null, top, bottom);
         }
     }
@@ -204,6 +205,39 @@ public class PadPlates : MonoBehaviour
         lineStyle.fontSize = Mathf.RoundToInt(14 * k);
         lineStyle.normal.textColor = new Color(0.82f, 0.84f, 0.90f);
 
+    }
+
+    // ── 글자 미리 재기 ──
+    // 명판 · 조합표 · 보스 이름표(IMGUI)는 한글 글자를 **처음 그리는 순간** 글꼴 엔진이 그 글자의 자간 표(GPOS · GSUB)를
+    // 읽느라 한 프레임에 60~170ms 를 썼다 — 카메라를 연구소로 처음 옮길 때 화면이 툭 멈추던 원인 (빌드 프로파일, 2026-10-16).
+    // 판 첫 프레임에 쓸 글자를 한꺼번에 재 둔다. 글꼴 자산은 씬을 다시 열어도 남으므로 한 번이면 된다
+    static bool glyphsWarm;
+
+    static void WarmGlyphs(GenesisHud hud)
+    {
+        if (hud == null) return;
+        var sb = new System.Text.StringBuilder(
+            "0123456789/·%×+-:().,!?★ ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+            "영혼 유닛 소환 금화 재료 인구 가득 살 수 있는 연구 개 다음 클릭해서 열기 창고 보관 마리 꺼내기는 준비 시간에 비어 있음 골라" +
+            "라운드 보스 카오스 단계 그리스 북유럽 한국 히든 시너지");
+        foreach (UnitType t in System.Enum.GetValues(typeof(UnitType))) sb.Append(UnitTable.Get(t).name);
+        foreach (Culture c in MaterialTable.All) sb.Append(MaterialTable.Name(c)).Append(MaterialTable.CultureName(c));
+        if (MonsterArt.Instance != null && MonsterArt.Instance.entries != null)
+            foreach (MonsterArt.Entry e in MonsterArt.Instance.entries) if (e != null) sb.Append(e.label);
+
+        var seen = new System.Collections.Generic.HashSet<char>();
+        var chars = new System.Text.StringBuilder();
+        foreach (char ch in sb.ToString()) if (seen.Add(ch)) chars.Append(ch);
+        var content = new GUIContent(chars.ToString());
+
+        foreach (Font f in new[] { hud.fontTitle, hud.fontBold })
+        {
+            if (f == null) continue;
+            var st = new GUIStyle(GUI.skin.label) { font = f, fontSize = 16, wordWrap = false };
+            st.CalcSize(content);
+            st.fontStyle = FontStyle.Bold;   // 조합표 줄 글자는 굵게 그린다
+            st.CalcSize(content);
+        }
     }
 
     void Shadowed(Rect r, string text, GUIStyle st)

@@ -62,6 +62,7 @@ public class TitleMenu : MonoBehaviour
     void Start()
     {
         Time.timeScale = 1f;
+        titleMusicLevel = GenesisAudio.MusicLevel;
         EnsureEventSystem();
         Build();
         StartMusic();
@@ -69,6 +70,7 @@ public class TitleMenu : MonoBehaviour
     }
 
     AudioSource musicSrc;
+    float titleMusicLevel = 1f;   // 설정의 배경음 크기 (GenesisAudio.MusicLevel)
 
     void StartMusic()
     {
@@ -371,8 +373,9 @@ public class TitleMenu : MonoBehaviour
         dim.color = new Color(0.01f, 0.015f, 0.04f, 0.72f);
 
         // 880×580 일 때 도감(히든 셋)과 조작법이 창을 넘쳐 닫기 버튼 밑으로 깔렸다 — 키우고,
-        // 아래 130 은 닫기 버튼 자리로 비워 둔다
-        RectTransform box = Rect("Box", modal, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -40f), new Vector2(960f, 720f));
+        // 아래 130 은 닫기 버튼 자리로 비워 둔다. 720 에선 도감 두 줄 설명 · 난이도 기록 줄이 칸 테두리에 붙어
+        // 760 으로 — 윗변은 그대로 두고 아래로만 늘린다
+        RectTransform box = Rect("Box", modal, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(960f, 760f));
         Image fill = box.gameObject.AddComponent<Image>();
         fill.color = panelFill;
         if (panel != null)
@@ -452,7 +455,7 @@ public class TitleMenu : MonoBehaviour
         if (tab == 4) { CodexHiddenGrid(58f); return; }
 
         UnitType[] list = CodexUnits[tab];
-        const float top = 58f, rowH = 80f;
+        const float top = 58f, rowH = 86f;   // 80 이면 두 줄로 꺾인 스킬 설명이 칸 아래 끝에 붙었다
         for (int i = 0; i < list.Length; i++) CodexRow(list[i], -top - i * rowH, rowH - 6f);
 
         if (tab == 0)
@@ -714,6 +717,10 @@ public class TitleMenu : MonoBehaviour
             UnitSkill.Def d = UnitSkill.For(h.result);
             Text nt = Label(cell, "<b>" + s.name + "</b>", 17, goldText, TextAnchor.UpperLeft, false);
             CellText(nt, tx, ty, right, 22f);
+            // 금테 카드 바탕(재료 색)이 밝아 금 이름이 묻혔다 — 어두운 테를 두른다
+            Outline no = nt.gameObject.AddComponent<Outline>();
+            no.effectColor = new Color(0f, 0f, 0f, 0.85f);
+            no.effectDistance = new Vector2(1.2f, -1.2f);
             // 칸이 좁아 한 줄로 쓰면 꺾여 틀 밖으로 넘쳤다 — 수치 두 줄 + 스킬 한 줄로 끊어 쓴다
             Text st = Label(cell, "<color=#9aa0b8>" + s.damage.ToString("0") + " × " + s.attackRate.ToString("0.0#") + "/초\n사거리 " + s.range.ToString("0") + "</color>" +
                                   (d.kind != UnitSkill.Kind.None ? "\n<color=#ffd873>" + d.name + "</color>" : ""),
@@ -765,9 +772,9 @@ public class TitleMenu : MonoBehaviour
         OpenModal("조작법",
             "<b>좌클릭</b>  선택        <b>드래그</b>  여러 개 선택        <b>더블클릭</b>  같은 종류 전부\n" +
             "<b>우클릭</b>  이동        <b>Esc</b>  선택 해제 · 메뉴 (F10)\n\n" +
-            "<b>Q W E R / A S D F</b>  명령 칸 (조합 · 창고 · 스킬 · 해제)\n" +
-            "<b>방향키</b>  카메라        <b>F1 ~ F4</b>  전투 · 영혼 · 조합표 · 연구소\n" +
-            "<b>1 ~ 3</b>  배속        <b>Space</b>  준비 시간 건너뛰기\n\n" +
+            "<b>Q E R T / Z X C V</b>  명령 칸 (조합 · 창고 · 스킬 · 해제)\n" +
+            "<b>WASD · 방향키</b>  카메라        <b>F1 ~ F4</b>  전투 · 영혼 · 조합표 · 연구소\n" +
+            "<b>마우스 휠</b>  확대 · 축소        <b>1 ~ 3</b>  배속        <b>Space</b>  준비 시간 건너뛰기\n\n" +
             "<color=#9aa0b8>영혼을 패드로 보내 유닛 · 재료 · 금화로 바꾸고, 같은 유닛을 모아 조합해 신을 만드세요.\n" +
             "몬스터가 필드에 100마리 쌓이면 패배, 50라운드의 카오스를 쓰러뜨리면 승리입니다.</color>");
     }
@@ -793,11 +800,28 @@ public class TitleMenu : MonoBehaviour
             if (GenesisAudio.Instance != null) GenesisAudio.Instance.sfxVolume = v;
         });
 
+        // 배경음 크기 — 타이틀 음악에도 바로 먹는다 (Update 가 musicVolume × 이 값)
+        float mus = GenesisAudio.MusicLevel;
+        Text ml = Label(modalContent, "배경음 크기", 22, textColor, TextAnchor.MiddleLeft, true);
+        Place(ml.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -120f), new Vector2(300f, 40f));
+        ml.rectTransform.pivot = new Vector2(0f, 1f);
+        Text mv = Label(modalContent, Mathf.RoundToInt(mus * 100f) + "%", 22, goldText, TextAnchor.MiddleRight, true);
+        Place(mv.rectTransform, new Vector2(1f, 1f), new Vector2(0f, -120f), new Vector2(120f, 40f));
+        mv.rectTransform.pivot = new Vector2(1f, 1f);
+        Slider ms = MakeSlider(modalContent, new Vector2(0f, -180f));
+        ms.value = mus;
+        ms.onValueChanged.AddListener(v =>
+        {
+            GenesisAudio.SetMusicLevel(v);
+            titleMusicLevel = v;
+            mv.text = Mathf.RoundToInt(v * 100f) + "%";
+        });
+
         // 전체 화면
         Text fl = Label(modalContent, "전체 화면", 22, textColor, TextAnchor.MiddleLeft, true);
-        Place(fl.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -150f), new Vector2(300f, 40f));
+        Place(fl.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -260f), new Vector2(300f, 40f));
         fl.rectTransform.pivot = new Vector2(0f, 1f);
-        RectTransform tb = Rect("FullScreen", modalContent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, -144f), new Vector2(200f, 0f));
+        RectTransform tb = Rect("FullScreen", modalContent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, -254f), new Vector2(200f, 0f));
         Text ft = null;
         Button(tb, Screen.fullScreen ? "켬" : "끔", Vector2.zero, false, () =>
         {
@@ -809,9 +833,9 @@ public class TitleMenu : MonoBehaviour
 
         // 처음 하는 사람용 안내 카드 — 한 번 끝까지 보면 안 뜬다. 여기서 되돌린다
         Text gl = Label(modalContent, "초반 안내", 22, textColor, TextAnchor.MiddleLeft, true);
-        Place(gl.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -230f), new Vector2(300f, 40f));
+        Place(gl.rectTransform, new Vector2(0f, 1f), new Vector2(0f, -340f), new Vector2(300f, 40f));
         gl.rectTransform.pivot = new Vector2(0f, 1f);
-        RectTransform gb = Rect("Guide", modalContent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, -224f), new Vector2(200f, 0f));
+        RectTransform gb = Rect("Guide", modalContent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, -334f), new Vector2(200f, 0f));
         Text gt = null;
         System.Func<string> guideLabel = () => PlayerPrefs.GetInt(GenesisHud.GuideDoneKey, 0) == 1 ? "다시 보기" : "켜짐";
         Button(gb, guideLabel(), Vector2.zero, false, () =>
@@ -837,7 +861,10 @@ public class TitleMenu : MonoBehaviour
         RectTransform area = Rect("FillArea", r, new Vector2(0f, 0.3f), new Vector2(1f, 0.7f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         RectTransform fillR = Rect("Fill", area, Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero);
         fillR.gameObject.AddComponent<Image>().color = new Color(goldText.r * 0.85f, goldText.g * 0.75f, goldText.b * 0.5f, 1f);
+        // 손잡이 반 폭(11)만큼 안쪽에서 움직인다 — 끝까지 가면 손잡이가 막대 밖으로 튀어나왔다
+        area.offsetMax = new Vector2(-11f, 0f);   // 채움은 왼쪽 끝부터 — 끝은 손잡이 밑에 숨는다
         RectTransform ha = Rect("HandleArea", r, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        ha.offsetMin = new Vector2(11f, 0f); ha.offsetMax = new Vector2(-11f, 0f);
         RectTransform h = Rect("Handle", ha, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(22f, 0f));
         Image hi = h.gameObject.AddComponent<Image>();
         hi.color = goldText;
@@ -872,7 +899,7 @@ public class TitleMenu : MonoBehaviour
         OpenModal("난이도", "");
         pickerOpen = true;
         GenesisDifficulty.Level sel = GenesisDifficulty.Selected;
-        const float rowH = 124f, gap = 14f;
+        const float rowH = 136f, gap = 14f;   // 124 면 기록 줄이 칸 아래 금테 위에 얹혔다
         for (int i = 0; i < GenesisDifficulty.All.Length; i++)
             DifficultyRow(GenesisDifficulty.All[i], -i * (rowH + gap), rowH, GenesisDifficulty.All[i] == sel);
 
@@ -907,7 +934,7 @@ public class TitleMenu : MonoBehaviour
         name.alignment = TextAnchor.MiddleLeft;
         name.rectTransform.anchorMin = new Vector2(0f, 1f); name.rectTransform.anchorMax = new Vector2(0f, 1f);
         name.rectTransform.pivot = new Vector2(0f, 1f);
-        name.rectTransform.anchoredPosition = new Vector2(46f, -16f); name.rectTransform.sizeDelta = new Vector2(260f, 46f);
+        name.rectTransform.anchoredPosition = new Vector2(46f, -14f); name.rectTransform.sizeDelta = new Vector2(260f, 44f);
 
         string body;
         if (!open)
@@ -926,7 +953,7 @@ public class TitleMenu : MonoBehaviour
         bt.lineSpacing = 1.2f;
         RectTransform br = bt.rectTransform;
         br.anchorMin = new Vector2(0f, 1f); br.anchorMax = new Vector2(1f, 1f); br.pivot = new Vector2(0f, 1f);
-        br.offsetMin = new Vector2(46f, -h + 14f); br.offsetMax = new Vector2(-30f, -62f);
+        br.offsetMin = new Vector2(46f, -h + 18f); br.offsetMax = new Vector2(-30f, -58f);
 
         if (selected && open)
         {
@@ -990,7 +1017,7 @@ public class TitleMenu : MonoBehaviour
 
         // 음악은 화면과 같이 — 켜질 때 서서히 커지고, 게임으로 넘어갈 때 검게 사라지며 줄어든다
         if (musicSrc != null && fader != null)
-            musicSrc.volume = musicVolume * (fader.gameObject.activeSelf ? 1f - fader.color.a : 1f);
+            musicSrc.volume = musicVolume * titleMusicLevel * (fader.gameObject.activeSelf ? 1f - fader.color.a : 1f);
 
         if (fader != null && fader.gameObject.activeSelf)
         {

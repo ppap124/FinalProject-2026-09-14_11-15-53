@@ -14,9 +14,6 @@ public class MaterialShop : MonoBehaviour
 {
     public static MaterialShop Instance { get; private set; }
 
-    [Header("비용")]
-    public int materialPullCost = 1;
-
     [Header("확률")]
     [Tooltip("재료가 실제로 나올 확률. 나머지는 빈손")]
     [Range(0.05f, 1f)] public float dropChance = 0.5f;
@@ -33,21 +30,6 @@ public class MaterialShop : MonoBehaviour
     void Awake()
     {
         Instance = this;
-    }
-
-    public bool CanPull()
-    {
-        return SoulBank.Instance != null
-            && MaterialBank.Instance != null
-            && SoulBank.Instance.CanAfford(materialPullCost);
-    }
-
-    public bool Pull()
-    {
-        if (!CanPull()) return false;
-        if (!SoulBank.Instance.TrySpend(materialPullCost)) return false;
-
-        return Grant();
     }
 
     /// <summary>영혼을 이미 패드가 먹었을 때 — 비용 없이 굴리기만 한다.</summary>

@@ -15,6 +15,7 @@ public partial class GenesisHud
 {
     public const string GuideDoneKey = "Genesis.GuideDone";
     const float GuideW = 560f;
+    const float GuideBodyY = -72f;   // 본문 윗줄 — 카드 높이도 여기서 잰다
 
     struct GuideStep
     {
@@ -39,13 +40,13 @@ public partial class GenesisHud
             "유닛은 전투장 안쪽에 나옵니다. <color=#ffd873>F1</color> 로 돌아가세요.\n유닛을 고르고 <b>우클릭</b>하면 옮깁니다 — 모서리는 두 길을 봅니다.",
             h => h.CameraOn("Block_Battle")),
         new GuideStep("재료 얻기",
-            "2단계 조합에는 <b>같은 유닛 2마리 + 재료 1개</b>가 듭니다.\n영혼을 <b>재료 제단</b>(초록 수정)으로 보내세요 — <color=#ffd873>W</color>. 확률로 나옵니다.",
+            "2단계 조합에는 <b>같은 유닛 2마리 + 재료 1개</b>가 듭니다.\n영혼을 <b>재료 제단</b>(초록 수정)으로 보내세요 — <color=#ffd873>E</color>. 확률로 나옵니다.",
             h => MaterialShop.Instance != null && MaterialShop.Instance.TotalAttempts > 0),
         new GuideStep("첫 조합",
             "유닛 하나를 고르면 명령 칸에 <b>조합 칸</b>이 뜹니다. 짝과 재료가 있으면 누르세요.\n어떤 재료로 무엇이 되는지는 <color=#ffd873>F3</color> 조합표에 있습니다.",
             h => UnitCombiner.Instance != null && UnitCombiner.Instance.TotalCombined > 0),
         new GuideStep("연구",
-            "영혼을 <b>금 제단</b>으로 보내면 금화가 나옵니다 — <color=#ffd873>E</color>.\n<color=#ffd873>F4</color> 연구소에서 금화로 공격력 · 공격 속도를 올리세요.",
+            "영혼을 <b>금 제단</b>으로 보내면 금화가 나옵니다 — <color=#ffd873>R</color>.\n<color=#ffd873>F4</color> 연구소에서 금화로 공격력 · 공격 속도를 올리세요.",
             h => h.AnyResearch()),
         new GuideStep("준비 끝",
             "몬스터가 필드에 <b>100마리</b> 쌓이면 패배, <b>50라운드</b>의 카오스를 쓰러뜨리면 승리.\n10라운드마다 보스가 나옵니다. 행운을 빕니다.",
@@ -78,16 +79,17 @@ public partial class GenesisHud
         guideBar.raycastTarget = false;
 
         guideHead = Label(guide, "", 14, new Color(0.62f, 0.66f, 0.80f), TextAnchor.UpperLeft, true);
-        Place(guideHead.rectTransform, new Vector2(0f, 1f), new Vector2(26f, -12f), new Vector2(300f, 20f));
+        // 맨 윗줄(안내 n/8 · 끄기)은 금테 안쪽으로 — -12 에선 글자 윗머리가 테 위에 얹혔다
+        Place(guideHead.rectTransform, new Vector2(0f, 1f), new Vector2(26f, -18f), new Vector2(300f, 20f));
         guideTitle = Label(guide, "", 22, goldText, TextAnchor.UpperLeft, true);
-        Place(guideTitle.rectTransform, new Vector2(0f, 1f), new Vector2(26f, -32f), new Vector2(GuideW - 60f, 30f));
+        Place(guideTitle.rectTransform, new Vector2(0f, 1f), new Vector2(26f, -38f), new Vector2(GuideW - 60f, 30f));
         guideBody = Label(guide, "", 16, textColor, TextAnchor.UpperLeft, false);
         guideBody.lineSpacing = 1.1f;
-        Place(guideBody.rectTransform, new Vector2(0f, 1f), new Vector2(26f, -66f), new Vector2(GuideW - 40f, 60f));
+        Place(guideBody.rectTransform, new Vector2(0f, 1f), new Vector2(26f, GuideBodyY), new Vector2(GuideW - 40f, 60f));
 
         // 끄기 — 오른쪽 위 작은 글자 단추
         RectTransform off = Rect("Off", guide, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-                                 new Vector2(-10f, -8f), new Vector2(96f, 26f));
+                                 new Vector2(-20f, -14f), new Vector2(96f, 26f));
         Image offBg = off.gameObject.AddComponent<Image>();
         offBg.color = new Color(1f, 1f, 1f, 0f);
         Button ob = off.gameObject.AddComponent<Button>();
@@ -116,7 +118,7 @@ public partial class GenesisHud
         // 글이 두 줄을 넘으면 카드를 늘린다 (창 크기 · 글꼴에 따라 꺾이는 자리가 달라서)
         float bodyH = Mathf.Max(40f, guideBody.preferredHeight);
         guideBody.rectTransform.sizeDelta = new Vector2(GuideW - 40f, bodyH);
-        guide.sizeDelta = new Vector2(GuideW, 66f + bodyH + 16f);
+        guide.sizeDelta = new Vector2(GuideW, -GuideBodyY + bodyH + 18f);
         guide.gameObject.SetActive(true);
     }
 

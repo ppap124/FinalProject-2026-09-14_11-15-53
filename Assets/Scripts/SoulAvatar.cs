@@ -64,10 +64,13 @@ public class SoulAvatar : MonoBehaviour
         Transform ring = transform.Find("SelectRing");
 
         // 유닛과 같은 가는 고리 — 꽉 찬 원반은 불꽃을 덮는다
-        if (on && ring == null) Unit.MakeRing(transform, transform.localScale.x * 0.8f);
+        if (on && ring == null) { Unit.MakeRing(transform, transform.localScale.x * 0.8f); SetHover(false); }
         else if (!on && ring != null)
         {
             Destroy(ring.gameObject);
         }
     }
+
+    /// <summary>마우스가 올라가 있다 — 유닛과 같은 흐린 고리 (UnitControl)</summary>
+    public void SetHover(bool on) { Unit.HoverRing(transform, on && !IsSelected, transform.localScale.x * 0.8f); }
 }

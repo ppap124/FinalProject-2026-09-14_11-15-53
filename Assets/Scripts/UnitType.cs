@@ -230,14 +230,6 @@ public static class UnitTable
         return false;
     }
 
-    /// <summary>이 히든의 조합식</summary>
-    public static bool RecipeOf(UnitType result, out Hidden h)
-    {
-        foreach (Hidden c in Hiddens) if (c.result == result) { h = c; return true; }
-        h = default(Hidden);
-        return false;
-    }
-
     /// <summary>찾아낸 적이 있는가 — 판을 넘어 남는다 (한 번 찾으면 이름이 보인다)</summary>
     public static bool Discovered(UnitType t) => PlayerPrefs.GetInt("Genesis.Hidden." + t, 0) == 1;
     public static void Discover(UnitType t) { PlayerPrefs.SetInt("Genesis.Hidden." + t, 1); PlayerPrefs.Save(); }

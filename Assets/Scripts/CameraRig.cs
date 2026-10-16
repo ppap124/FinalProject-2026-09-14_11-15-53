@@ -5,8 +5,9 @@ using UnityEngine.InputSystem;
 /// 워크3식 카메라. 맵 전체를 한 화면에 안 담는다 — 전투 블록을 크게 보고,
 /// 영혼 블록·조합표 블록은 화면 밖에 두고 필요할 때 옮겨간다.
 ///
-///   방향키          화면 이동 (QWER/ASDF 는 명령 칸 단축키라 안 쓴다)
+///   WASD · 방향키   화면 이동 (명령 칸 단축키는 그래서 QERT / ZXCV)
 ///   화면 가장자리    이동 (끌 수 있음)
+///   마우스 휠        확대 · 축소
 ///   F1~F4           전투 / 영혼 / 조합표 / 연구소로 바로 이동
 /// </summary>
 public class CameraRig : MonoBehaviour
@@ -20,6 +21,13 @@ public class CameraRig : MonoBehaviour
 
     [Tooltip("시선을 앞으로 내리는 거리(바닥 단위). HUD 가 화면 아래를 더 많이 가리는 만큼 보정한다")]
     public float hudShift = 5.5f;
+
+    [Header("확대 · 축소 (마우스 휠)")]
+    [Tooltip("휠 한 칸에 높이를 이 비율만큼 — 0.12 면 12%씩")]
+    public float zoomStep = 0.12f;
+    [Tooltip("가장 가깝게 · 가장 멀리 — 기본 높이(height)의 배수. height 자체는 조합표 배치(RecipeDisplay)가 기준으로 읽으므로 그대로 둔다")]
+    public Vector2 zoomRange = new Vector2(0.55f, 1.7f);
+    float zoom = 1f, zoomTarget = 1f;
 
     [Header("이동")]
     public float panSpeed = 30f;
@@ -66,6 +74,7 @@ public class CameraRig : MonoBehaviour
         HandleInput();
 
         look = Vector2.Lerp(look, target, 1f - Mathf.Exp(-smooth * Time.unscaledDeltaTime));
+        zoom = Mathf.Lerp(zoom, zoomTarget, 1f - Mathf.Exp(-smooth * Time.unscaledDeltaTime));
         Apply(false);
     }
 
@@ -82,10 +91,21 @@ public class CameraRig : MonoBehaviour
             if (k.f3Key.wasPressedThisFrame) { target = recipePoint; return; }
             if (k.f4Key.wasPressedThisFrame) { target = labPoint; return; }
 
-            if (k.leftArrowKey.isPressed) dir.x -= 1f;
-            if (k.rightArrowKey.isPressed) dir.x += 1f;
-            if (k.downArrowKey.isPressed) dir.y -= 1f;
-            if (k.upArrowKey.isPressed) dir.y += 1f;
+            if (k.leftArrowKey.isPressed || k.aKey.isPressed) dir.x -= 1f;
+            if (k.rightArrowKey.isPressed || k.dKey.isPressed) dir.x += 1f;
+            if (k.downArrowKey.isPressed || k.sKey.isPressed) dir.y -= 1f;
+            if (k.upArrowKey.isPressed || k.wKey.isPressed) dir.y += 1f;
+        }
+
+        // 휠 — 위로 굴리면 가까이. 윈도우는 한 칸에 120 이 오고, 플랫폼에 따라 ±1 로 오기도 한다
+        if (Mouse.current != null && Application.isFocused)
+        {
+            float wheel = Mouse.current.scroll.ReadValue().y;
+            if (Mathf.Abs(wheel) > 0.01f)
+            {
+                float notches = Mathf.Abs(wheel) >= 10f ? wheel / 120f : wheel;
+                zoomTarget = Mathf.Clamp(zoomTarget * Mathf.Pow(1f - zoomStep, notches), zoomRange.x, zoomRange.y);
+            }
         }
 
         if (edgeScroll && Mouse.current != null)
@@ -128,14 +148,16 @@ public class CameraRig : MonoBehaviour
     {
         if (cam == null) return;
 
-        if (instant) look = target;
+        if (instant) { look = target; zoom = zoomTarget; }
 
-        float horiz = height / Mathf.Tan(pitch * Mathf.Deg2Rad);
+        // 확대는 높이와 시선 보정을 같이 줄인다 — 비율이 같아야 주시점이 HUD 사이 칸 가운데에 남는다
+        float h = height * zoom;
+        float horiz = h / Mathf.Tan(pitch * Mathf.Deg2Rad);
 
         // HUD 는 아래 콘솔(180)이 위 띠(46)보다 두꺼워서, 화면 한가운데가 곧 보이는 칸의
         // 한가운데가 아니다. 시선을 hudShift 만큼 앞(-z)으로 내려서, 주시점이 **HUD 사이
         // 보이는 칸의 가운데**에 오게 한다. 안 그러면 전투장 아래 길이 콘솔 밑에 깔린다
-        cam.transform.position = new Vector3(look.x, height, look.y - hudShift - horiz) + ShakeOffset();
+        cam.transform.position = new Vector3(look.x, h, look.y - hudShift * zoom - horiz) + ShakeOffset();
         cam.transform.rotation = Quaternion.Euler(pitch, 0f, 0f);
     }
 

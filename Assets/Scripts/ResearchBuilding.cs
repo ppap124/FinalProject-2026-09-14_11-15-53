@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 연구소 건물 하나. **클릭하면 유닛처럼 선택되고**, 연구 여덟 가지가 HUD 명령 칸
-/// (QWER / ASDF)에 뜬다 (`GenesisHud.ShowLab`). 예전에는 따로 뜨는 OnGUI 창이었는데,
+/// (QERT / ZXCV)에 뜬다 (`GenesisHud.ShowLab`). 예전에는 따로 뜨는 OnGUI 창이었는데,
 /// 콘솔과 다른 창이 하나 더 떠서 HUD 가 두 벌로 보였다.
 /// 항목마다 패드를 두는 대신 건물 하나로 합쳤다 — 항목이 늘어나도 맵이 안 지저분해진다.
 /// </summary>

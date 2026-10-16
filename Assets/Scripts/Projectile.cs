@@ -75,6 +75,11 @@ public float lifeTime = 3f;
     /// <summary>근접·번개 — 날아가지 않고 `delay` 뒤에 바로 맞힌다</summary>
     public void MakeInstant(float delay) { instantDelay = Mathf.Max(0f, delay); }
 
+    AudioClip[] hitSounds;
+    float hitVolume;
+    /// <summary>맞는 순간 낼 소리 — 근접 유닛 (휘두르기 시작이 아니라 닿을 때 나야 맞는다)</summary>
+    public void SetHitSound(AudioClip[] clips, float volume) { hitSounds = clips; hitVolume = volume; }
+
     void Start() { flat = transform.position; }
 
     void Update()
@@ -129,6 +134,7 @@ public float lifeTime = 3f;
 
     void Hit()
     {
+        if (hitSounds != null) GenesisAudio.PlayAttack(hitSounds, hitVolume);
         if (hitFx != null)
             AttackFx.Burst(hitFx, target.hitRadius > 0f ? Impact : target.transform.position + Vector3.up * hitHeight, hitFxSize);
 

@@ -88,8 +88,24 @@ public class ChaosBoss : MonoBehaviour
     [Tooltip("소용돌이 · 후광의 가로 배율")]
     public float cardWide = 1.45f;
 
+    [Header("2단계 — 분노 (체력 절반)")]
+    [Tooltip("남은 체력이 이 비율 밑으로 내려가면 발톱이 깨져 날아가고 눈이 붉게 달아오른다. 연출만 바뀐다 (체력 · 공격은 그대로)")]
+    [Range(0f, 1f)] public float rageAt = 0.5f;
+    public Color rageColor = new Color(1f, 0.1f, 0.18f);
+    [Tooltip("분노한 뒤의 시선 — 더 짧게 머물고 더 자주 유닛을 노려본다")]
+    public Vector2 rageGazeHold = new Vector2(0.45f, 1.4f);
+    [Range(0f, 1f)] public float rageLookAtUnit = 0.6f;
+
     /// <summary>눈알 반지름 (월드)</summary>
     public float Radius => diameter * 0.5f;
+
+    // 2단계
+    bool enraged;
+    float rageFrom = -1f;
+    float Rage => rageFrom < 0f ? 0f : Mathf.Clamp01((Time.time - rageFrom) / 1.2f);
+    struct Shard { public Transform t; public Vector3 v, spin; }
+    readonly List<Shard> shards = new List<Shard>();
+    ParticleSystem burst;
 
     // 주변 효과
     Transform vortexA, vortexB, halo;
@@ -102,7 +118,7 @@ public class ChaosBoss : MonoBehaviour
     float[] boltUntil;
     float nextBolt;
 
-    Transform eye, shell, ringA, ringB, spin;
+    Transform eye, ringA, ringB, spin;
     Light eyeLight;
     Material irisMat, scleraMat, ringMat;
     readonly List<Object> made = new List<Object>();
@@ -237,23 +253,34 @@ public class ChaosBoss : MonoBehaviour
             float ta = Time.time - awakenAt;
             lvl = Mathf.Lerp(0.3f, 1f, Mathf.Clamp01(ta / 0.35f)) + Mathf.Max(0f, 1.2f * (1f - ta / 1.2f));
         }
-        UpdateFx(dt, lvl, 1f);
+        // ── 2단계: 체력 절반 — 껍질이 깨지고 눈이 달아오른다 ──
+        if (awake && !enraged && monster != null && monster.HpRatio <= rageAt) Enrage();
+        float rage = Rage;
+        float flash = rageFrom >= 0f ? Mathf.Max(0f, 1.5f * (1f - (Time.time - rageFrom) / 0.8f)) : 0f;   // 깨지는 순간 번쩍
+        UpdateFx(dt, lvl * (1f + 0.4f * rage) + flash, 1f + 0.9f * rage);
+        Shards(dt);
 
-        // 발톱 껍질이 돈다 · 고리는 제 축으로
+        // 발톱 껍질이 돈다 · 고리는 제 축으로 (분노하면 고리가 빨라진다)
         if (spin != null) spin.Rotate(0f, 0f, spinSpeed * dt, Space.Self);
-        if (ringA != null) ringA.Rotate(0f, 0f, 22f * dt, Space.Self);
-        if (ringB != null) ringB.Rotate(0f, 0f, -15f * dt, Space.Self);
+        if (ringA != null) ringA.Rotate(0f, 0f, 22f * (1f + 1.5f * rage) * dt, Space.Self);
+        if (ringB != null) ringB.Rotate(0f, 0f, -15f * (1f + 1.5f * rage) * dt, Space.Self);
 
-        // 홍채가 숨쉰다 — 싸우는 동안에만
+        // 홍채가 숨쉰다 — 싸우는 동안에만. 분노하면 붉게, 더 빨리 숨쉰다
         if (irisMat != null)
         {
-            float k = awake ? 0.85f + 0.15f * Mathf.Sin(Time.time * 2.3f) : 0.25f;
+            float k = awake ? 0.85f + 0.15f * Mathf.Sin(Time.time * (2.3f + 3f * rage)) : 0.25f;
             if (awakenAt >= 0f) k += Mathf.Max(0f, 1.8f * (1f - (Time.time - awakenAt) / 0.9f));   // 눈 뜬 순간 번쩍
-            irisMat.SetColor("_EmissionColor", Color.white * (irisGlow * k));
+            Color tint = Color.Lerp(Color.white, new Color(1f, 0.45f, 0.5f), rage);
+            irisMat.SetColor("_EmissionColor", tint * (irisGlow * k * (1f + 0.5f * rage) + flash));
         }
+        if (scleraMat != null && rage > 0f)
+            scleraMat.SetColor("_EmissionColor", Color.Lerp(new Color(1f, 0.8f, 0.85f) * scleraGlow, rageColor * 0.55f, rage));
         if (eyeLight != null)
-            eyeLight.intensity = lightIntensity * (awake ? 1f : 0.2f) *
+        {
+            eyeLight.color = Color.Lerp(glowColor, rageColor, rage);
+            eyeLight.intensity = lightIntensity * (awake ? 1f : 0.2f) * (1f + 1.5f * rage + 4f * flash) *
                                  (awakenAt >= 0f ? 1f + Mathf.Max(0f, 3f * (1f - (Time.time - awakenAt) / 1.2f)) : 1f);
+        }
 
         if (!awake) return;
 
@@ -263,14 +290,15 @@ public class ChaosBoss : MonoBehaviour
             bool second = doubleAt >= 0f && Time.time >= doubleAt;
             doubleAt = -1f;
             PickGaze();
-            nextGaze = Time.time + Random.Range(gazeHold.x, gazeHold.y);
+            Vector2 hold = Vector2.Lerp(gazeHold, rageGazeHold, rage);
+            nextGaze = Time.time + Random.Range(hold.x, hold.y);
             // 가끔 두 번 연달아 — 두리번거리는 것처럼
             if (!second && Random.value < 0.2f) doubleAt = Time.time + Random.Range(0.18f, 0.35f);
         }
-        Quaternion q = Quaternion.RotateTowards(eye.localRotation, gazeTarget, saccadeSpeed * dt);
-        // 멈춰 있어도 아주 미세하게 떨린다 — 살아 있는 눈
-        float f = Time.time * 3f;
-        Quaternion tremor = Quaternion.Euler((Mathf.PerlinNoise(f, 0.1f) - 0.5f) * 1.2f, (Mathf.PerlinNoise(0.4f, f) - 0.5f) * 1.2f, 0f);
+        Quaternion q = Quaternion.RotateTowards(eye.localRotation, gazeTarget, saccadeSpeed * (1f + 0.6f * rage) * dt);
+        // 멈춰 있어도 아주 미세하게 떨린다 — 살아 있는 눈. 분노하면 떨림이 커진다
+        float f = Time.time * (3f + 5f * rage), shiver = 1.2f + 2.3f * rage;
+        Quaternion tremor = Quaternion.Euler((Mathf.PerlinNoise(f, 0.1f) - 0.5f) * shiver, (Mathf.PerlinNoise(0.4f, f) - 0.5f) * shiver, 0f);
         eye.localRotation = q;
         if (Quaternion.Angle(q, gazeTarget) < 0.5f) eye.localRotation = gazeTarget * tremor;
     }
@@ -305,7 +333,7 @@ public class ChaosBoss : MonoBehaviour
 
     void PickGaze()
     {
-        if (Random.value < lookAtUnitChance)
+        if (Random.value < Mathf.Lerp(lookAtUnitChance, rageLookAtUnit, Rage))
         {
             Unit[] units = FindObjectsByType<Unit>(FindObjectsSortMode.None);
             if (units.Length > 0)
@@ -330,6 +358,93 @@ public class ChaosBoss : MonoBehaviour
 
     /// <summary>눈이 뒤로 넘어가지 않게 — 정면에서 50° 안</summary>
     static Quaternion Clamp(Quaternion q) => Quaternion.RotateTowards(Quaternion.identity, q, 50f);
+
+    // ── 2단계 — 분노 ───────────────────────
+
+    /// <summary>
+    /// 체력 절반 — 흑요석 발톱이 깨져 사방으로 날아가 벽 너머 어둠으로 떨어진다. 파편이 터지고 화면이 흔들린다.
+    /// 그 뒤로 눈은 붉게 달아오르고(홍채 · 흰자 · 점광 · 소용돌이), 더 빨리 · 자주 두리번거린다
+    /// </summary>
+    void Enrage()
+    {
+        enraged = true;
+        rageFrom = Time.time;
+        float R = Radius;
+
+        // 발톱을 떼어 낸다 — 몸(떠오르내림 · 회전)을 따라가지 않게 바깥 부모로 옮기고 제각각 날린다
+        Transform world = transform.parent;
+        foreach (Transform tl in talons)
+        {
+            if (tl == null) continue;
+            tl.SetParent(world, true);
+            Vector3 dir = tl.position - eye.position;
+            dir = dir.sqrMagnitude > 0.01f ? dir.normalized : Random.onUnitSphere;
+            Shard s;
+            s.t = tl;
+            s.v = dir * R * Random.Range(0.9f, 1.6f) + Vector3.up * R * Random.Range(0.3f, 0.8f);
+            s.spin = Random.insideUnitSphere * 220f;
+            shards.Add(s);
+        }
+        talons.Clear();
+
+        burst = Burst(R);
+        if (CameraRig.Instance != null) CameraRig.Instance.Shake(0.75f, 1.1f);
+        GenesisAudio.Play(GenesisAudio.Cue.ChaosBreak);
+        GenesisHud hud = FindFirstObjectByType<GenesisHud>();
+        if (hud != null) hud.Announce("분노", "카오스의 껍질이 부서졌습니다", rageColor, 2.2f);
+    }
+
+    /// <summary>날아간 발톱 — 중력에 떨어지며 돌고, 2.6초 뒤 사라진다 (그때쯤 벽 아래 어둠 속이다)</summary>
+    void Shards(float dt)
+    {
+        if (shards.Count == 0) return;
+        float g = Radius * 1.6f, age = Time.time - rageFrom;
+        for (int i = shards.Count - 1; i >= 0; i--)
+        {
+            Shard s = shards[i];
+            if (s.t == null) { shards.RemoveAt(i); continue; }
+            if (age > 2.6f) { Kill(s.t.gameObject); shards.RemoveAt(i); continue; }
+            s.v += Vector3.down * g * dt;
+            s.t.position += s.v * dt;
+            s.t.Rotate(s.spin * dt, Space.Self);
+            shards[i] = s;
+        }
+    }
+
+    /// <summary>깨지는 순간 — 붉은 파편 불티가 사방으로 터진다</summary>
+    ParticleSystem Burst(float R)
+    {
+        GameObject g = new GameObject("RageBurst");
+        g.transform.SetParent(transform, false);
+        ParticleSystem ps = g.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        var main = ps.main;
+        main.duration = 0.6f;
+        main.loop = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(R * 0.8f, R * 2.4f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.8f);
+        main.gravityModifier = 0.4f;
+        main.maxParticles = 400;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        var em = ps.emission; em.rateOverTime = 0f;
+        em.SetBursts(new[] { new ParticleSystem.Burst(0f, 220), new ParticleSystem.Burst(0.15f, 100) });
+        var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Sphere; sh.radius = R * 1.05f; sh.radiusThickness = 0.1f;
+        var col = ps.colorOverLifetime; col.enabled = true;
+        Gradient fade = new Gradient();
+        fade.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                     new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.7f, 0.5f), new GradientAlphaKey(0f, 1f) });
+        col.color = fade;
+        var size = ps.sizeOverLifetime; size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0.2f));
+        Texture2D dot = ChaosIntro.Dot(); made.Add(dot);
+        Material m = ChaosIntro.Additive(dot); m.SetColor("_BaseColor", rageColor * 3f); made.Add(m);   // URP Unlit 은 입자 색을 안 받는다
+        ParticleSystemRenderer pr = g.GetComponent<ParticleSystemRenderer>();
+        pr.sharedMaterial = m;
+        pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        ps.Play();
+        return ps;
+    }
 
     // ── 쓰러짐 ─────────────────────────────
 
@@ -429,9 +544,9 @@ public class ChaosBoss : MonoBehaviour
         if (vortexA != null) vortexA.Rotate(0f, 0f, vortexSpin * pace * dt, Space.Self);
         if (vortexB != null) vortexB.Rotate(0f, 0f, -vortexSpin * 0.65f * pace * dt, Space.Self);
         float breathe = 0.85f + 0.15f * Mathf.Sin(Time.time * 1.7f);
-        if (vortexMatA != null) vortexMatA.SetColor("_BaseColor", vortexColor * (2.1f * lvl * breathe));
+        if (vortexMatA != null) vortexMatA.SetColor("_BaseColor", Color.Lerp(vortexColor, rageColor, Rage * 0.7f) * (2.1f * lvl * breathe));
         if (vortexMatB != null) vortexMatB.SetColor("_BaseColor", new Color(0.45f, 0.25f, 1f) * (1.6f * lvl));
-        if (haloMat != null) haloMat.SetColor("_BaseColor", glowColor * (1.1f * lvl * (0.8f + 0.2f * Mathf.Sin(Time.time * 2.3f))));
+        if (haloMat != null) haloMat.SetColor("_BaseColor", Color.Lerp(glowColor, rageColor, Rage) * (1.1f * lvl * (0.8f + 0.2f * Mathf.Sin(Time.time * 2.3f))));
         if (halo != null) { float hs = diameter * 1.9f * (1f + 0.05f * Mathf.Sin(Time.time * 2.3f)); halo.localScale = new Vector3(hs * cardWide, hs * 0.8f, 1f); }
 
         for (int i = 0; i < debrisList.Count; i++)

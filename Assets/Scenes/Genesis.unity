@@ -11298,6 +11298,8 @@ MonoBehaviour:
   pitch: 36
   height: 30
   hudShift: 5.5
+  zoomStep: 0.12
+  zoomRange: {x: 0.55, y: 1.7}
   panSpeed: 30
   smooth: 10
   edgeScroll: 1
@@ -102467,6 +102469,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitControl
   dragThreshold: 6
   doubleClickTime: 0.35
+  pickRadius: 22
 --- !u!4 &321673290
 Transform:
   m_ObjectHideFlags: 0
@@ -168306,7 +168309,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 87860be1906ffdd4e8c6ba7305182a0e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MaterialShop
-  materialPullCost: 1
   dropChance: 0.5
 --- !u!114 &516831632
 MonoBehaviour:
@@ -390327,7 +390329,6 @@ MonoBehaviour:
   bridgeWidthScale: 1.6
   bridgeWidthMin: 8
   bridgeTint: {r: 0.55, g: 0.6, b: 0.78, a: 1}
-  warehouseTint: {r: 0.8, g: 0.82, b: 0.9, a: 1}
   warehouseProp: {fileID: 8688467083786147558, guid: 437c5ef42f149154ba8782185319cc0f, type: 3}
   buildingHeight: 15
   foundation: 1
@@ -651501,33 +651502,42 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cc55659b30bce744499aad1e5feddb22, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenesisAudio
-  bgmNormal: {fileID: 0}
-  bgmBoss: {fileID: 0}
-  bgmFinal: {fileID: 0}
-  bgmVictory: {fileID: 0}
-  bgmDefeat: {fileID: 0}
+  bgmNormal: {fileID: 8300000, guid: 78b7dcc768867ce4b9e3405a2a03212c, type: 3}
+  bgmLate: {fileID: 8300000, guid: 4eafe0e6850f8d44197e118bd06580fe, type: 3}
+  lateFrom: 25
+  bgmBoss: {fileID: 8300000, guid: fd80f8891ad573f4b96f77fd51b26735, type: 3}
+  bgmFinal: {fileID: 8300000, guid: 4abb717c35c16f846b3c55ebe9b87c9a, type: 3}
+  bgmVictory: {fileID: 8300000, guid: 82b9ad5b2830a4840b77b9de3bd9ea45, type: 3}
+  bgmDefeat: {fileID: 8300000, guid: 520e0d67ae475824fb09ede49dae3492, type: 3}
   bgmVolume: 0.35
   crossfade: 1.8
-  click: {fileID: 8300000, guid: 46ea7d9b9a0596a449b9946f17309cf1, type: 3}
-  denied: {fileID: 8300000, guid: 966ca5d7f60b7c444b531a7c768accc2, type: 3}
-  summon: {fileID: 8300000, guid: 3bef77c350943684e80f0f4a7949e3ea, type: 3}
+  click: {fileID: 8300000, guid: c230389cdba1a4d47bda71c4d0e2b6f9, type: 3}
+  denied: {fileID: 8300000, guid: 8e746bda97a9f634f9c225c03bd4bfcb, type: 3}
+  summon: {fileID: 8300000, guid: b24e0cfe30a1af946a2be3277b152ddd, type: 3}
   material: {fileID: 8300000, guid: 0b8e8da963937464e80ae0c11eaaa121, type: 3}
   gold: {fileID: 8300000, guid: 9edc7dd76da302244990baf5f0b9ec1a, type: 3}
   fail: {fileID: 8300000, guid: bba33cd822f4b7845ac44f8654cc3069, type: 3}
-  combine: {fileID: 8300000, guid: 015791c36a8542d46887fd35b0134b6e, type: 3}
-  legend: {fileID: 8300000, guid: 52aabfa9a77e10344853a35945705a3f, type: 3}
-  store: {fileID: 8300000, guid: c0dda5c1e42cbec43aa519a27e861040, type: 3}
-  skill: {fileID: 0}
-  roundStart: {fileID: 8300000, guid: 0e13d4691ec885d4781e7b3b64ba87a5, type: 3}
-  boss: {fileID: 8300000, guid: 78d77f76d9e7ede4a9dfef604697236a, type: 3}
-  chaos: {fileID: 8300000, guid: 04a17c1773c498e49812daa80dbc4127, type: 3}
-  chaosRumble: {fileID: 0}
-  kill: {fileID: 8300000, guid: 0c56fa297d002f147bf19209137d3441, type: 3}
-  victory: {fileID: 8300000, guid: c2218829cbcabff498e71d6ffa5bdb31, type: 3}
-  defeat: {fileID: 8300000, guid: 4773543855f3bbb41821f4bdf21ac3da, type: 3}
+  combine: {fileID: 8300000, guid: 984a9cf5ee77ff845bf7c4372ac97c8d, type: 3}
+  legend: {fileID: 8300000, guid: fd666b5f4b6f7364f95d798994cd5568, type: 3}
+  store: {fileID: 8300000, guid: e8af9035f5758f44da37af4225a02619, type: 3}
+  skill: {fileID: 8300000, guid: cc6699269b4c1d44ea1e860518b9bb73, type: 3}
+  roundStart: {fileID: 8300000, guid: b1d7259c0d34b714e861ada838f652f2, type: 3}
+  boss: {fileID: 8300000, guid: 67ce9da3005b8c64eab44c2c4372d899, type: 3}
+  chaos: {fileID: 8300000, guid: 39468ddc6ded0d64ea5214d3c2863da3, type: 3}
+  chaosRumble: {fileID: 8300000, guid: b63b69c1d442c724c83665f02b92e1c9, type: 3}
+  bossEmerge: {fileID: 8300000, guid: 703ba148b8b660e40b950315bff17495, type: 3}
+  bossDown: {fileID: 8300000, guid: 09cbd05d94445ad47804af7dcdd3ba7b, type: 3}
+  danger: {fileID: 8300000, guid: 020fb1ae42dd72845844ed990e2deb69, type: 3}
+  chaosBreak: {fileID: 8300000, guid: d706545932ddc5d488fdf0e5516206a3, type: 3}
+  kill: {fileID: 8300000, guid: 3504539acdd584d4d8b538f356ea47ed, type: 3}
+  victory: {fileID: 8300000, guid: 5c7667ec19b40ac41ac227653fe2480d, type: 3}
+  defeat: {fileID: 8300000, guid: 6e1353707f4a9b7468b086a834e71c18, type: 3}
   sfxVolume: 0.8
   killVolume: 0.3
   minGap: 0.07
+  attackGap: 0.18
+  attackVoices: 3
+  attackWindow: 0.15
 --- !u!4 &1830534361
 Transform:
   m_ObjectHideFlags: 0
@@ -651898,6 +651908,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.3
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -651933,6 +651946,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.4
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.22
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 1.2
@@ -651968,6 +651984,9 @@ MonoBehaviour:
     style: 2
     hitEffect: {fileID: 2944396702758532163, guid: e190bf97c041e58448af6b043116cba0, type: 3}
     hitEffectSize: 0.45
+    attackSounds:
+    - {fileID: 8300000, guid: e270026d059d7ec4e88b2fa2f9892f43, type: 3}
+    attackVolume: 0.22
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652003,6 +652022,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 1758473627833946668, guid: 9b21333b068a5084ba09535839bee3c8, type: 3}
     hitEffectSize: 0.55
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.35
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652027,6 +652049,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 496913248247719083, guid: c483142edbf33dc4d9014c13724a0175, type: 3}
     hitEffectSize: 0.35
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.2
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0.4
@@ -652062,6 +652087,9 @@ MonoBehaviour:
     style: 2
     hitEffect: {fileID: 2944396702758532163, guid: e190bf97c041e58448af6b043116cba0, type: 3}
     hitEffectSize: 0.5
+    attackSounds:
+    - {fileID: 8300000, guid: e270026d059d7ec4e88b2fa2f9892f43, type: 3}
+    attackVolume: 0.28
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652097,6 +652125,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 5435998012328932994, guid: d8703a33a4eb0b84a875202fde23e8f7, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.35
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652132,6 +652163,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 4924508274929071776, guid: 0edef91621bb6b34384ccc9dbb98729c, type: 3}
     hitEffectSize: 0.5
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.28
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 1.6
@@ -652167,6 +652201,9 @@ MonoBehaviour:
     style: 2
     hitEffect: {fileID: 4924508274929071776, guid: 0edef91621bb6b34384ccc9dbb98729c, type: 3}
     hitEffectSize: 0.5
+    attackSounds:
+    - {fileID: 8300000, guid: e270026d059d7ec4e88b2fa2f9892f43, type: 3}
+    attackVolume: 0.28
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652202,6 +652239,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 1758473627833946668, guid: 9b21333b068a5084ba09535839bee3c8, type: 3}
     hitEffectSize: 0.55
+    attackSounds:
+    - {fileID: 8300000, guid: 53da412b125eacd489f4f979d89dac07, type: 3}
+    attackVolume: 0.35
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652248,6 +652288,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 5435998012328932994, guid: d8703a33a4eb0b84a875202fde23e8f7, type: 3}
     hitEffectSize: 0.45
+    attackSounds:
+    - {fileID: 8300000, guid: 110baa63232f30f4fa82b54b90adf697, type: 3}
+    attackVolume: 0.28
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652272,6 +652315,9 @@ MonoBehaviour:
     style: 2
     hitEffect: {fileID: 4386588507499592971, guid: 48e196c36363e814bad43a44c92dc11b, type: 3}
     hitEffectSize: 0.55
+    attackSounds:
+    - {fileID: 8300000, guid: e270026d059d7ec4e88b2fa2f9892f43, type: 3}
+    attackVolume: 0.3
     fxColor: {r: 0.7, g: 0.55, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652296,6 +652342,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 4994997792314849709, guid: 3dd50886582244645be87adb42aa8528, type: 3}
     hitEffectSize: 0.35
+    attackSounds:
+    - {fileID: 8300000, guid: 8aa87fd230aacc94087db6a7860ccaa5, type: 3}
+    attackVolume: 0.42
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652320,6 +652369,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 4924508274929071776, guid: 0edef91621bb6b34384ccc9dbb98729c, type: 3}
     hitEffectSize: 0.8
+    attackSounds:
+    - {fileID: 8300000, guid: 8aa87fd230aacc94087db6a7860ccaa5, type: 3}
+    attackVolume: 0.42
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652344,6 +652396,9 @@ MonoBehaviour:
     style: 2
     hitEffect: {fileID: 4924508274929071776, guid: 0edef91621bb6b34384ccc9dbb98729c, type: 3}
     hitEffectSize: 0.9
+    attackSounds:
+    - {fileID: 8300000, guid: b03a33e05b46ac44abc529f34557c6cb, type: 3}
+    attackVolume: 0.38
     fxColor: {r: 0.4, g: 0.6, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652379,6 +652434,10 @@ MonoBehaviour:
     style: 4
     hitEffect: {fileID: 2965222256817593503, guid: a164e676dbbd6e54587237e619372c98, type: 3}
     hitEffectSize: 0.7
+    attackSounds:
+    - {fileID: 8300000, guid: 5c8ae51eb71d4d04db254b89e37ec5c4, type: 3}
+    - {fileID: 8300000, guid: ea54b4f9931d6ae46b652ada4e0d42ee, type: 3}
+    attackVolume: 0.5
     fxColor: {r: 0.75, g: 0.85, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652414,6 +652473,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 4535006216103734310, guid: 98c4704d0fd7211449bcf5c451095a60, type: 3}
     hitEffectSize: 0.7
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.35
     fxColor: {r: 1, g: 0.85, b: 0.45, a: 1}
     strikeAt: 0.35
     arc: 0.6
@@ -652438,6 +652500,9 @@ MonoBehaviour:
     style: 0
     hitEffect: {fileID: 4535006216103734310, guid: 98c4704d0fd7211449bcf5c451095a60, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: 0d8e5f72ac7b1e44fb0db13da784fa86, type: 3}
+    attackVolume: 0.4
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 0
@@ -652462,6 +652527,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.5
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.3
     fxColor: {r: 0, g: 0, b: 0, a: 0}
     strikeAt: 0.35
     arc: 1
@@ -652508,6 +652576,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.38
     fxColor: {r: 0.65, g: 0.8, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652543,6 +652614,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.4
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.3
     fxColor: {r: 1, g: 0.6, b: 0.35, a: 1}
     strikeAt: 0.35
     arc: 1.2
@@ -652578,6 +652652,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.4
     fxColor: {r: 0.65, g: 0.8, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652613,6 +652690,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: 53da412b125eacd489f4f979d89dac07, type: 3}
+    attackVolume: 0.42
     fxColor: {r: 0.65, g: 0.8, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652648,6 +652728,9 @@ MonoBehaviour:
     style: 1
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.6
+    attackSounds:
+    - {fileID: 8300000, guid: f165eeabd3c5b024badd1124c05f0599, type: 3}
+    attackVolume: 0.4
     fxColor: {r: 0.65, g: 0.8, b: 1, a: 1}
     strikeAt: 0.35
     arc: 0
@@ -652683,6 +652766,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.4
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.3
     fxColor: {r: 1, g: 0.6, b: 0.35, a: 1}
     strikeAt: 0.35
     arc: 1.2
@@ -652718,6 +652804,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.4
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.32
     fxColor: {r: 1, g: 0.6, b: 0.35, a: 1}
     strikeAt: 0.35
     arc: 1.2
@@ -652753,6 +652842,9 @@ MonoBehaviour:
     style: 3
     hitEffect: {fileID: 8500920156052182585, guid: 830e92a3f95c4b04caf8edd648aed9bd, type: 3}
     hitEffectSize: 0.4
+    attackSounds:
+    - {fileID: 8300000, guid: 91f14e27ec247d046b1f0a957a52b941, type: 3}
+    attackVolume: 0.32
     fxColor: {r: 1, g: 0.6, b: 0.35, a: 1}
     strikeAt: 0.35
     arc: 1.2
@@ -689616,6 +689708,8 @@ MonoBehaviour:
   barBoss: {fileID: 21300000, guid: 8e9b326fa1afd6343b7334e86a4c1998, type: 3}
   barChaos: {fileID: 21300000, guid: d2b88ca76bbc6e841849779c060238e1, type: 3}
   barMob: {fileID: 21300000, guid: 6ea8485746174544d8df996d45d7ec70, type: 3}
+  chipGem: {fileID: 21300000, guid: c45fe1af624d00948895c43217d92838, type: 3}
+  chipRibbon: {fileID: 21300000, guid: 9d2792c3fe97c5444b2f4fd67353e9a0, type: 3}
   unitPortraits:
   - {fileID: 21300000, guid: 111dcdfdbfaee124ebc6078306ab5f6f, type: 3}
   - {fileID: 21300000, guid: 44583d7b0eee9f94a8f46a3ec3fec955, type: 3}
@@ -689676,15 +689770,12 @@ MonoBehaviour:
   fontBold: {fileID: 12800000, guid: 57a8e0d34862d8c4cbf49083cb2cb988, type: 3}
   fontTitle: {fileID: 12800000, guid: 2c21470536a74694b9ef7e53ff9fb1a9, type: 3}
   fontTitleHeavy: {fileID: 12800000, guid: 4c60a24a47fa31d41ac7f35a5081abd3, type: 3}
-  margin: 14
   portraitSize: {x: 172, y: 180}
-  infoSize: {x: 760, y: 204}
   slotSize: 70
   slotGap: 8
   textColor: {r: 0.92, g: 0.9, b: 0.84, a: 1}
   dimText: {r: 0.62, g: 0.64, b: 0.72, a: 1}
   goldText: {r: 1, g: 0.83, b: 0.45, a: 1}
-  badText: {r: 1, g: 0.45, b: 0.4, a: 1}
   portraitBack: {r: 0.035, g: 0.045, b: 0.09, a: 1}
   panelFill: {r: 0.035, g: 0.05, b: 0.105, a: 1}
   portraitLayer: 8
@@ -753914,6 +754005,11 @@ MonoBehaviour:
   bossSize: 10
   bossInterval: 10
   bossHpMult: 0.6
+  bossHpScale:
+  - 1
+  - 1
+  - 1
+  - 0.7
   bossGraceRounds: 2
   bossSpeedMult: 0.6
   bossRewardScalesWithRound: 1
@@ -753922,10 +754018,13 @@ MonoBehaviour:
   goldRoundScale: 0.1
   bossGoldMult: 20
   fieldLimit: 100
+  dangerAt:
+  - 0.7
+  - 0.9
   finalRound: 50
   finalTimeLimit: 120
   finalHpMult: 1.5
-  chaosHp: 70000000
+  chaosHp: 55000000
   chaosDiameter: 20
   chaosAnchor: {x: 0, y: 1.5, z: 60}
   chaosIris: {fileID: 2800000, guid: a2aa6bd565c815342bdb5ed31cbf8629, type: 3}

@@ -44,6 +44,9 @@ public partial class GenesisHud : MonoBehaviour
     [Tooltip("몹 머리 위 체력바 틀 (VARCO, 9분할 — 테두리가 곧 창 자리). MonsterBars 가 쓴다")]
     public Sprite barBoss, barChaos, barMob;
 
+    [Tooltip("위 띠 칩 — 단계 칩 왼쪽 보석 · 난이도 리본(9분할). 흰 그림을 물들여 쓴다 (코드로 그린 그림, 2026-10-16)")]
+    public Sprite chipGem, chipRibbon;
+
     [Tooltip("유닛 초상화 그림. 이름이 `Portrait_<UnitType>` 이어야 한다. 없는 유닛은 실제 모델을 비춘다")]
     public Sprite[] unitPortraits;
     [Tooltip("고유 스킬 아이콘. 이름이 Skill_<유닛 종류> 여야 한다 (Skill_Titan 등). 없으면 iconSkill")]
@@ -68,10 +71,8 @@ public partial class GenesisHud : MonoBehaviour
     public Font fontTitleHeavy;
 
     [Header("배치 (기준 해상도 1920×1080)")]
-    public float margin = 14f;
     [Tooltip("틀 그림이 없을 때만 쓰는 초상화 크기. 틀이 있으면 틀 몸통 높이를 콘솔 높이에 맞춰 크기를 계산한다 (FrameBody)")]
     public Vector2 portraitSize = new Vector2(172f, 180f);
-    public Vector2 infoSize = new Vector2(760f, 204f);
     public float slotSize = 70f;   // 두 줄 + 간격 8 = 148 — 초상화 · 우물과 위아래 선이 맞는다
     public float slotGap = 8f;
 
@@ -79,7 +80,6 @@ public partial class GenesisHud : MonoBehaviour
     public Color textColor = new Color(0.92f, 0.90f, 0.84f);
     public Color dimText = new Color(0.62f, 0.64f, 0.72f);
     public Color goldText = new Color(1f, 0.83f, 0.45f);
-    public Color badText = new Color(1f, 0.45f, 0.40f);
     public Color portraitBack = new Color(0.035f, 0.045f, 0.09f);
     [Tooltip("판 바탕. 패널 그림 가운데의 대리석 무늬는 화면 폭만큼 늘어나면 뭉개져서 단색으로 깐다")]
     public Color panelFill = new Color(0.035f, 0.05f, 0.105f, 1f);
@@ -141,7 +141,7 @@ public partial class GenesisHud : MonoBehaviour
         public Button button;
         public Image frame, icon, badge, band;
         public Text label, key, count;
-        public Image countChip;
+        public Image countChip, keyChip;
         public System.Action onClick;
         public string title, body;
         public bool ready;
@@ -293,6 +293,92 @@ public partial class GenesisHud : MonoBehaviour
         bannerTitle.rectTransform.localScale = Vector3.one * pop;
     }
 
+    // ── 위 띠 단계 · 난이도 칩 ──
+    // 예전엔 테 없는 납작한 색 상자 둘이라 금세공 명판 안에서 혼자 따로 놀았다 (2026-10-16 두 벌을 견줘 보고 섞었다).
+    //   단계   — 몹 · 보스 · 카오스 체력바 틀(금테 · 양 끝 보석)을 작게. 준비 · 진행엔 왼쪽에 단계 색 보석.
+    //            보스 · 최종전이 되면 틀째 바뀌어 위급함이 한눈에 보인다
+    //   난이도 — 끝이 V로 갈라진 리본을 난이도 색으로. 판 내내 안 바뀌는 정보라 단추처럼 보이지 않게
+    const float PhaseW = 90f, PhaseH = 26f;
+    Image phaseFill, phaseGem;
+
+    void BuildPhaseChip(RectTransform p, float x, float mid)
+    {
+        RectTransform chip = Rect("Phase", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                                  new Vector2(x, mid), new Vector2(PhaseW, PhaseH));
+        // 창 바탕 → 틀 → 보석 → 글자 순서로 쌓는다
+        phaseFill = Rect("Fill", chip, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero).gameObject.AddComponent<Image>();
+        phaseFill.raycastTarget = false;
+        phaseChip = Rect("Frame", chip, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero).gameObject.AddComponent<Image>();
+        phaseChip.raycastTarget = false;
+        phaseChip.type = Image.Type.Sliced;
+        phaseChip.fillCenter = false;
+        phaseGem = Pic(Rect("Gem", chip, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(13f, 13f)), chipGem);
+        phaseText = Label(chip, "", 15, textColor, TextAnchor.MiddleCenter, true);
+        RectTransform tr = phaseText.rectTransform;
+        tr.anchorMin = Vector2.zero; tr.anchorMax = Vector2.one; tr.pivot = new Vector2(0.5f, 0.5f);
+        tr.offsetMin = Vector2.zero; tr.offsetMax = Vector2.zero;
+    }
+
+    void BuildDifficultyChip(RectTransform p, float x, float mid)
+    {
+        GameLoop dgl = GameLoop.Instance;
+        GenesisDifficulty.Level dl = dgl != null ? dgl.Difficulty : GenesisDifficulty.Selected;
+        Color dc = GenesisDifficulty.Tint(dl);
+
+        RectTransform r = Rect("Difficulty", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                               new Vector2(x - 4f, mid), new Vector2(88f, PhaseH));
+        Image ri = r.gameObject.AddComponent<Image>();
+        ri.raycastTarget = false;
+        ri.sprite = chipRibbon;
+        ri.type = Image.Type.Sliced;
+        if (chipRibbon != null) ri.pixelsPerUnitMultiplier = chipRibbon.rect.height / PhaseH * 100f / chipRibbon.pixelsPerUnit;   // 끝 홈을 띠 높이에 맞춘다
+        ri.color = chipRibbon != null ? new Color(dc.r * 0.62f, dc.g * 0.62f, dc.b * 0.62f, 1f) : new Color(dc.r * 0.28f, dc.g * 0.28f, dc.b * 0.28f, 0.95f);
+        Text rt = Label(r, GenesisDifficulty.Name(dl), 15, new Color(1f, 0.97f, 0.90f), TextAnchor.MiddleCenter, true);
+        Place(rt.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f), new Vector2(88f, PhaseH));
+        Outline ro = rt.gameObject.AddComponent<Outline>();
+        ro.effectColor = new Color(0f, 0f, 0f, 0.6f);
+        ro.effectDistance = new Vector2(1f, -1f);
+    }
+
+    /// <summary>색을 가장 밝은 채널이 1 이 되게 펴고 흰색을 조금 섞는다 — 어두운 칩 색에서 글자 · 보석 색을 뽑는다</summary>
+    static Color Bright(Color c)
+    {
+        float m = Mathf.Max(0.001f, Mathf.Max(c.r, Mathf.Max(c.g, c.b)));
+        return Color.Lerp(new Color(c.r / m, c.g / m, c.b / m, 1f), Color.white, 0.25f);
+    }
+
+    /// <summary>단계 칩을 지금 단계로 칠한다. kind: 0 준비 1 진행 2 보스 3 최종전 4 승리 5 패배</summary>
+    void SetPhaseArt(string phase, Color chip, int kind)
+    {
+        phaseText.text = phase;
+        Color bright = Bright(chip);
+
+        Sprite s = kind == 2 ? barBoss : kind == 3 ? barChaos : barMob;
+        phaseChip.enabled = s != null;
+        phaseChip.sprite = s;
+        Vector4 b = Vector4.zero;
+        if (s != null)
+        {
+            // 틀 높이를 칩 높이에 맞춘다 — 테두리 화면 폭 = border × 칩 높이 / 그림 높이
+            phaseChip.pixelsPerUnitMultiplier = s.rect.height / PhaseH * 100f / s.pixelsPerUnit;
+            b = s.border * (PhaseH / s.rect.height);
+        }
+        phaseFill.rectTransform.offsetMin = new Vector2(b.x - 1f, b.y - 1f);
+        phaseFill.rectTransform.offsetMax = new Vector2(-b.z + 1f, -b.w + 1f);
+        phaseFill.color = s != null ? Color.Lerp(new Color(0.02f, 0.03f, 0.07f, 0.95f), chip, 0.35f) : chip;
+
+        // 보스 · 카오스 틀은 양 끝에 보석이 박혀 있다 — 준비 · 진행 · 결과만 왼쪽에 보석을 단다
+        bool gem = chipGem != null && kind != 2 && kind != 3;
+        phaseGem.enabled = gem;
+        phaseGem.color = bright;
+        phaseGem.rectTransform.anchoredPosition = new Vector2(b.x + 8f, 0f);
+        phaseText.fontSize = phase.Length >= 3 ? 13 : 15;   // "최종전"은 카오스 틀 양 끝 수정에 닿았다
+        phaseText.color = Color.Lerp(bright, Color.white, 0.4f);
+        RectTransform tr = phaseText.rectTransform;
+        tr.offsetMin = new Vector2(b.x + (gem ? 15f : 0f), 0f);
+        tr.offsetMax = new Vector2(-b.z, 0f);
+    }
+
     /// <summary>
     /// 위쪽 띠 — 세 칸. **왼쪽** 라운드 · 단계 · 남은 시간, **가운데** 필드 게이지(패배 조건이라
     /// 글자 한 줄에 묻으면 안 된다), **오른쪽** 자원(영혼·금화 | 재료 셋, 올리면 이름).
@@ -324,42 +410,28 @@ public partial class GenesisHud : MonoBehaviour
                                     new Vector2(8f, mid), new Vector2(leftW, plaqueH));
             cap = PlaqueImage(lp) + 12f;   // 끝 장식의 소용돌이가 안쪽으로 말려 들어와서 조금 여유를
         }
-        roundText = Title(p, "", 23, goldText, TextAnchor.MiddleLeft);
-        Place(roundText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap, mid), new Vector2(120f, 32f));
+        // 왼쪽 장식 끝(8 + cap - 12)과 단계 칩(8 + cap + 118) 사이 **가운데**에. 왼쪽 정렬일 땐 "라운드 1"처럼 짧으면
+        // 장식 쪽으로 쏠려 보였다. 세로는 명판 띠(위 11 ~ 34px) 가운데에 — 화면에서 잰 글자 잉크 기준
+        roundText = Title(p, "", 23, goldText, TextAnchor.MiddleCenter);
+        Place(roundText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap - 12f, mid + 1.5f), new Vector2(130f, 32f));
 
-        RectTransform chip = Rect("Phase", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                                  new Vector2(8f + cap + 118f, mid), new Vector2(74f, 24f));
-        phaseChip = chip.gameObject.AddComponent<Image>();
-        phaseChip.raycastTarget = false;
-        phaseText = Label(chip, "", 15, textColor, TextAnchor.MiddleCenter, true);
-        Place(phaseText.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(74f, 24f));
+        BuildPhaseChip(p, 8f + cap + 116f, mid);
 
         timeText = Label(p, "", 22, textColor, TextAnchor.MiddleLeft, true);
-        Place(timeText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 204f, mid), new Vector2(80f, 32f));
+        Place(timeText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 116f + PhaseW + 12f, mid + 2f), new Vector2(70f, 32f));   // 숫자는 줄 상자에서 아래로 처져 앉는다 — 띠 가운데로 올린다
 
         // 인구수 — 필드 유닛 / 상한. 가득 차면 붉게 (유닛 패드가 영혼을 안 받는다)
         popText = Label(p, "", 18, textColor, TextAnchor.MiddleLeft, true);
-        Place(popText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 280f, mid), new Vector2(110f, 32f));
+        Place(popText.rectTransform, new Vector2(0f, 0.5f), new Vector2(8f + cap + 290f, mid + 2.5f), new Vector2(100f, 32f));
 
-        // 난이도 칩 — 테두리만 난이도 색, 글자도 같은 색. 판 내내 변하지 않으니 여기서 한 번 칠한다
-        GameLoop dgl = GameLoop.Instance;
-        GenesisDifficulty.Level dl = dgl != null ? dgl.Difficulty : GenesisDifficulty.Selected;
-        Color dc = GenesisDifficulty.Tint(dl);
-        RectTransform dchip = Rect("Difficulty", p, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                                   new Vector2(8f + cap + 386f, mid), new Vector2(70f, 24f));
-        Image dbg = dchip.gameObject.AddComponent<Image>();
-        dbg.color = new Color(dc.r * 0.28f, dc.g * 0.28f, dc.b * 0.28f, 0.95f);
-        dbg.raycastTarget = false;
-        Outline dol = dchip.gameObject.AddComponent<Outline>();
-        dol.effectColor = new Color(dc.r, dc.g, dc.b, 0.85f);
-        dol.effectDistance = new Vector2(1f, -1f);
-        Text dt = Label(dchip, GenesisDifficulty.Name(dl), 15, dc, TextAnchor.MiddleCenter, true);
-        Place(dt.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(70f, 24f));
+        BuildDifficultyChip(p, 8f + cap + 392f, mid);
 
         // ── 가운데: 필드 게이지 (최종전에는 카오스 체력) ──
         // 게이지 틀은 9분할이고 **테두리가 곧 창 자리**다 (UISpriteCutter.GaugeFrame 이 창을 재서 넣었다).
         // 그래서 트랙과 채움을 테두리만큼 안쪽에 앉히면 창에 딱 들어간다
-        const float barW = 460f, frameH = 30f;
+        // 460 · 가운데였을 땐 오른쪽 글자 칸이 140 뿐이라 보스전 "100%  5라운드까지"가 자원 명판 밑으로 들어갔다.
+        // 게이지를 줄이고 왼쪽으로 옮겨 글자 칸을 250 으로 (가장 긴 "이번 라운드까지 · 필드 100" 이 237)
+        const float barW = 360f, frameH = 30f, gaugeX = -70f;
         RectTransform holder;
         RectTransform bar;
         float frameW = barW;
@@ -370,7 +442,7 @@ public partial class GenesisHud : MonoBehaviour
             frameW = barW + (b.x + b.z) / k;
             // 날개가 창 위로 솟아 있어 위 테두리가 아래보다 두껍다 — 틀을 그만큼 올려 **창**이 띠 한가운데에 오게
             holder = Rect("GaugeFrame", p, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                          new Vector2(0f, mid + (b.w - b.y) / (2f * k)), new Vector2(frameW, frameH));
+                          new Vector2(gaugeX, mid + (b.w - b.y) / (2f * k)), new Vector2(frameW, frameH));
             bar = Rect("Gauge", holder, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             bar.offsetMin = new Vector2(b.x / k, b.y / k);
             bar.offsetMax = new Vector2(-b.z / k, -b.w / k);
@@ -378,7 +450,7 @@ public partial class GenesisHud : MonoBehaviour
         else
         {
             holder = Rect("GaugeFrame", p, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                          new Vector2(0f, mid), new Vector2(barW, 14f));
+                          new Vector2(gaugeX, mid), new Vector2(barW, 14f));
             bar = Rect("Gauge", holder, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         }
 
@@ -407,11 +479,11 @@ public partial class GenesisHud : MonoBehaviour
         else Outline(bar, new Color(goldText.r, goldText.g, goldText.b, 0.55f));
 
         gaugeLabel = Label(p, "", 16, dimText, TextAnchor.MiddleRight, true);
-        Place(gaugeLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-frameW * 0.5f - 8f, mid), new Vector2(90f, 28f));
+        Place(gaugeLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(gaugeX - frameW * 0.5f - 8f, mid), new Vector2(90f, 28f));
         gaugeLabel.rectTransform.pivot = new Vector2(1f, 0.5f);
 
         gaugeText = Label(p, "", 19, textColor, TextAnchor.MiddleLeft, true);
-        Place(gaugeText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(frameW * 0.5f + 8f, mid), new Vector2(200f, 28f));
+        Place(gaugeText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(gaugeX + frameW * 0.5f + 8f, mid), new Vector2(250f, 28f));
         gaugeText.rectTransform.pivot = new Vector2(0f, 0.5f);
 
         // ── 오른쪽: 명판 위에 자원 — 영혼·금화 | 재료 셋. 이름이 없으면 무엇인지 모르므로 올리면 뜬다 ──
@@ -688,6 +760,47 @@ public partial class GenesisHud : MonoBehaviour
 
         hintText = Label(p, "", 17, dimText, TextAnchor.UpperLeft, false);
         Place(hintText.rectTransform, new Vector2(0f, 1f), new Vector2(20f, -84f), new Vector2(900f, 56f));
+        BuildControls(p);
+    }
+
+    // ── 조작 안내 표 — 아무것도 안 골랐을 때 hintText 자리에 ──
+    // 한 줄 글로 이어 쓰니 항목이 늘 때마다 줄이 넘치고(휠 확대를 넣자 "메뉴"가 셋째 줄로 밀렸다) 두 줄의 "·"가
+    // 제멋대로 놓였다. 두 줄 × 여섯 칸 표로 — 칸 폭은 위아래 중 긴 쪽에 맞춰 세로로 줄이 선다. 키는 금색(명령 칸 키와 같은 색)
+    static readonly string[,] Controls =
+    {
+        { "좌클릭", "선택" },   { "드래그", "여러 개" },     { "더블클릭", "같은 종류" }, { "우클릭", "이동" },  { "QERT · ZXCV", "명령 칸" },   { "Esc", "해제 · 메뉴" },
+        { "WASD · 방향키", "카메라" }, { "휠", "확대 · 축소" }, { "F1~F4", "구역 이동" },   { "1~3", "배속" },     { "Space", "준비 건너뛰기" }, { "", "" },
+    };
+    GameObject controlsGrid;
+
+    void BuildControls(RectTransform p)
+    {
+        RectTransform g = Rect("Controls", p, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -84f), new Vector2(900f, 56f));
+        controlsGrid = g.gameObject;
+        const int cols = 6;
+        const float rowH = 27f, gap = 30f;
+        string key = "<color=#" + ColorUtility.ToHtmlStringRGB(goldText) + ">";
+        var cells = new Text[2, cols];
+        var widths = new float[cols];
+        for (int r = 0; r < 2; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                int i = r * cols + c;
+                if (Controls[i, 0].Length == 0) continue;
+                Text t = Label(g, key + Controls[i, 0] + "</color>  " + Controls[i, 1], 16, dimText, TextAnchor.UpperLeft, false);
+                t.horizontalOverflow = HorizontalWrapMode.Overflow;
+                cells[r, c] = t;
+                widths[c] = Mathf.Max(widths[c], t.preferredWidth);
+            }
+        float x = 0f;
+        for (int c = 0; c < cols; c++)
+        {
+            for (int r = 0; r < 2; r++)
+                if (cells[r, c] != null)
+                    Place(cells[r, c].rectTransform, new Vector2(0f, 1f), new Vector2(x, -r * rowH), new Vector2(widths[c] + 4f, rowH));
+            x += widths[c] + gap;
+        }
+        controlsGrid.SetActive(false);
     }
 
     void Divider(RectTransform console, Vector2 anchor, float x)
@@ -738,18 +851,19 @@ public partial class GenesisHud : MonoBehaviour
                 RectTransform band = Rect("Band", s, new Vector2(0.08f, 0.06f), new Vector2(0.92f, 0.30f), new Vector2(0.5f, 0f),
                                           Vector2.zero, Vector2.zero);
                 Image bandImg = band.gameObject.AddComponent<Image>();
-                bandImg.color = new Color(0.02f, 0.03f, 0.07f, 0.82f);
+                bandImg.color = new Color(0.02f, 0.03f, 0.07f, 0.92f);   // 0.82 면 밝은 아이콘(해제의 흰 원)이 비쳐 글자가 묻혔다
                 bandImg.raycastTarget = false;
                 v.band = bandImg;
                 v.label = Label(s, "", 15, textColor, TextAnchor.MiddleCenter, true);
                 Place(v.label.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 4f), new Vector2(slotSize, 22f));
-                v.label.rectTransform.anchorMin = new Vector2(0.04f, 0.06f);
-                v.label.rectTransform.anchorMax = new Vector2(0.96f, 0.30f);
+                // 띠(0.08 ~ 0.92)보다 조금 안쪽 — 띠보다 넓으면 "미노타우로스"가 칸 금테에 닿았다
+                v.label.rectTransform.anchorMin = new Vector2(0.10f, 0.06f);
+                v.label.rectTransform.anchorMax = new Vector2(0.90f, 0.30f);
                 v.label.rectTransform.pivot = new Vector2(0.5f, 0.5f);
                 v.label.rectTransform.sizeDelta = Vector2.zero;
                 v.label.rectTransform.anchoredPosition = Vector2.zero;
                 v.label.resizeTextForBestFit = true;
-                v.label.resizeTextMinSize = 10;
+                v.label.resizeTextMinSize = 9;
                 v.label.resizeTextMaxSize = 13;
 
                 SlotHover hv = s.gameObject.AddComponent<SlotHover>();
@@ -757,8 +871,16 @@ public partial class GenesisHud : MonoBehaviour
                 hv.exit = HideTip;
 
                 // 단축키 글자 — 워크3처럼 칸 자리마다 키가 정해져 있다
-                v.key = Label(s, SlotKeys[index], 14, goldText, TextAnchor.UpperLeft, true);
-                Place(v.key.rectTransform, new Vector2(0f, 1f), new Vector2(7f, -4f), new Vector2(22f, 20f));
+                // 어두운 받침 위에 — 금테 · 금빛 아이콘 위에 금 글자를 바로 쓰면 묻혔다 (오른쪽 위 숫자 받침과 같은 말투)
+                RectTransform kc = Rect("KeyChip", s, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                                        new Vector2(4f, -4f), new Vector2(18f, 19f));
+                v.keyChip = kc.gameObject.AddComponent<Image>();
+                v.keyChip.color = new Color(0.02f, 0.03f, 0.07f, 0.85f);
+                v.keyChip.raycastTarget = false;
+                v.key = Label(kc, SlotKeys[index], 14, goldText, TextAnchor.MiddleCenter, true);
+                RectTransform krt = v.key.rectTransform;
+                krt.anchorMin = Vector2.zero; krt.anchorMax = Vector2.one;
+                krt.offsetMin = Vector2.zero; krt.offsetMax = Vector2.zero;
                 Outline ko = v.key.gameObject.AddComponent<Outline>();   // 아이콘 그림 위에서도 읽히게
                 ko.effectColor = new Color(0f, 0f, 0f, 0.9f);
                 ko.effectDistance = new Vector2(1f, -1f);
@@ -806,7 +928,8 @@ public partial class GenesisHud : MonoBehaviour
         resultGroup = result.gameObject.AddComponent<CanvasGroup>();
 
         RectTransform box = Rect("Box", result, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                                 new Vector2(0f, -40f), new Vector2(760f, 510f));   // 기록 · 피해 순위 줄까지 네 줄
+                                 new Vector2(0f, -40f), new Vector2(860f, 540f));   // 기록 · 피해 순위 줄까지 네 줄 — 760 에선
+                                                                                     // 첫 클리어 · 순위 여섯이 겹친 판에 순위가 꺾여 버튼에 붙었다
         Panel(box);
 
         // 문장은 판 위로 솟는다 — 콘솔의 날개 문장과 같은 문법
@@ -819,12 +942,12 @@ public partial class GenesisHud : MonoBehaviour
         resultTitle.rectTransform.pivot = new Vector2(0.5f, 1f);
 
         resultReason = Label(box, "", 20, dimText, TextAnchor.MiddleCenter, false);
-        Place(resultReason.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -218f), new Vector2(640f, 30f));
+        Place(resultReason.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -226f), new Vector2(760f, 30f));   // 승리 글자 밑에 붙지 않게
         resultReason.rectTransform.pivot = new Vector2(0.5f, 1f);
 
         resultStats = Label(box, "", 19, textColor, TextAnchor.UpperCenter, false);
         resultStats.lineSpacing = 1.25f;
-        Place(resultStats.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -262f), new Vector2(720f, 150f));
+        Place(resultStats.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -272f), new Vector2(820f, 165f));
         resultStats.rectTransform.pivot = new Vector2(0.5f, 1f);
 
         ResultButton(box, "다시 하기  (Enter)", new Vector2(-130f, 34f), () => GameLoop.Instance.Restart());
@@ -1123,14 +1246,13 @@ public partial class GenesisHud : MonoBehaviour
         bool boss = !gl.InPrep && gl.IsBossRound(gl.Round);
         roundText.text = "라운드 " + gl.Round;
 
-        string phase; Color chip;
-        if (gl.IsOver) { phase = gl.Won ? "승리" : "패배"; chip = gl.Won ? new Color(0.55f, 0.42f, 0.12f) : new Color(0.50f, 0.12f, 0.20f); }
-        else if (gl.InPrep) { phase = "준비"; chip = new Color(0.12f, 0.32f, 0.40f); }
-        else if (final) { phase = "최종전"; chip = new Color(0.50f, 0.12f, 0.36f); }
-        else if (boss) { phase = "보스"; chip = new Color(0.55f, 0.16f, 0.12f); }
-        else { phase = "진행"; chip = new Color(0.16f, 0.22f, 0.40f); }
-        phaseText.text = phase;
-        phaseChip.color = chip;
+        string phase; Color chip; int kind;
+        if (gl.IsOver) { phase = gl.Won ? "승리" : "패배"; chip = gl.Won ? new Color(0.55f, 0.42f, 0.12f) : new Color(0.50f, 0.12f, 0.20f); kind = gl.Won ? 4 : 5; }
+        else if (gl.InPrep) { phase = "준비"; chip = new Color(0.12f, 0.32f, 0.40f); kind = 0; }
+        else if (final) { phase = "최종전"; chip = new Color(0.50f, 0.12f, 0.36f); kind = 3; }
+        else if (boss) { phase = "보스"; chip = new Color(0.55f, 0.16f, 0.12f); kind = 2; }
+        else { phase = "진행"; chip = new Color(0.16f, 0.22f, 0.40f); kind = 1; }
+        SetPhaseArt(phase, chip, kind);
 
         int left = Mathf.CeilToInt(Mathf.Max(0f, gl.PhaseTimeLeft));
         timeText.text = gl.IsOver ? "" : (left / 60) + ":" + (left % 60).ToString("00");
@@ -1184,6 +1306,7 @@ public partial class GenesisHud : MonoBehaviour
         Unit u = uc != null ? uc.SoleSelectedUnit : null;
         int units = uc != null ? uc.SelectedCount : 0;
         int souls = uc != null ? uc.SelectedSoulCount : 0;
+        if (controlsGrid != null) controlsGrid.SetActive(false);   // 선택이 없을 때만 (ShowEmpty 가 켠다)
 
         // 건물은 유닛과 같은 자리에 뜬다 — 따로 뜨는 창을 없앤 이유다
         if (ResearchBuilding.Instance != null && ResearchBuilding.Instance.open) { ShowLab(); return; }
@@ -1335,7 +1458,7 @@ public partial class GenesisHud : MonoBehaviour
         synText.text = "";
     }
 
-    // 연구 여덟 가지가 명령 칸 여덟 칸과 딱 맞는다 — Q W E R / A S D F
+    // 연구 여덟 가지가 명령 칸 여덟 칸과 딱 맞는다 — Q E R T / Z X C V
     static readonly Research[] LabOrder =
     {
         Research.Power, Research.Speed, Research.SoulIncome, Research.SynergyEase,
@@ -1434,7 +1557,7 @@ public partial class GenesisHud : MonoBehaviour
         if (w == null) return;
 
         List<UnitType> kinds = w.Kinds();
-        if (kinds.Count == 0) { hintText.text = "비어 있습니다. 유닛을 고르고 창고 칸(D)으로 넣으세요."; }
+        if (kinds.Count == 0) { hintText.text = "비어 있습니다. 유닛을 고르고 창고 칸(C)으로 넣으세요."; }
 
         // 마지막 칸은 해제. 일곱 종을 넘으면 한 칸을 '다음 쪽'에 내준다
         int per = kinds.Count > 7 ? 6 : 7;
@@ -1556,7 +1679,7 @@ public partial class GenesisHud : MonoBehaviour
         subText.text = "소환 재료";
         statsRoot.SetActive(false);
         synText.text = "";
-        hintText.text = "Q 소환문 · W 재료 제단 · E 금 제단으로 보냅니다. 우클릭으로 직접 옮겨도 됩니다.";
+        hintText.text = "Q 소환문 · E 재료 제단 · R 금 제단으로 보냅니다. 우클릭으로 직접 옮겨도 됩니다.";
 
         for (int i = 0; i < slots.Count - 1; i++) ClearSlot(slots[i]);
         SetSendSouls(slots[0], iconAttack, "유닛", "소환문", "1단계 유닛이 1마리 나옵니다", TriggerBlock.Action.PullUnit);
@@ -1583,7 +1706,8 @@ public partial class GenesisHud : MonoBehaviour
         subText.text = "유닛이나 영혼을 클릭하세요";
         statsRoot.SetActive(false);
         synText.text = "";
-        hintText.text = "좌클릭 선택  ·  드래그로 여러 개  ·  더블클릭 같은 종류  ·  우클릭 이동  ·  QWER / ASDF 명령 칸\n방향키 카메라  ·  F1~F4 전투/영혼/조합표/연구소  ·  1~3 배속  ·  Space 준비 건너뛰기  ·  Esc 해제 · 메뉴";
+        hintText.text = "";
+        if (controlsGrid != null) controlsGrid.SetActive(true);   // 조작 안내 표 (BuildControls)
         for (int i = 0; i < slots.Count; i++) ClearSlot(slots[i]);
     }
 
@@ -1605,7 +1729,7 @@ public partial class GenesisHud : MonoBehaviour
         subText.text = "여러 유닛";
         statsRoot.SetActive(false);
         synText.text = "";
-        hintText.text = "우클릭으로 함께 옮깁니다. D로 한꺼번에 창고에 넣습니다. 하나만 고르면 조합할 수 있습니다.\n" +
+        hintText.text = "우클릭으로 함께 옮깁니다. C로 한꺼번에 창고에 넣습니다. 하나만 고르면 조합할 수 있습니다.\n" +
                         "유닛을 더블클릭하면 화면에 보이는 같은 종류를 전부 고릅니다.";
 
         for (int i = 0; i < slots.Count - 1; i++) ClearSlot(slots[i]);
@@ -1658,9 +1782,9 @@ public partial class GenesisHud : MonoBehaviour
     }
 
     // 명령 칸 단축키 — 워크3 격자식. 칸 자리마다 키가 고정이라 손이 외운다.
-    // 그래서 카메라는 WASD 를 안 쓰고 방향키로만 움직인다 (CameraRig)
-    static readonly string[] SlotKeys = { "Q", "W", "E", "R", "A", "S", "D", "F" };
-    static readonly Key[] SlotKeyCodes = { Key.Q, Key.W, Key.E, Key.R, Key.A, Key.S, Key.D, Key.F };
+    // WASD 는 카메라(CameraRig)라 비워 두고 왼손이 닿는 Q E R T / Z X C V 를 쓴다
+    static readonly string[] SlotKeys = { "Q", "E", "R", "T", "Z", "X", "C", "V" };
+    static readonly Key[] SlotKeyCodes = { Key.Q, Key.E, Key.R, Key.T, Key.Z, Key.X, Key.C, Key.V };
 
     void HandleSlotKeys()
     {
@@ -1710,10 +1834,12 @@ public partial class GenesisHud : MonoBehaviour
         v.badge.color = ready ? Color.white : new Color(0.6f, 0.6f, 0.6f, 0.8f);
         v.count.text = "";
         v.label.text = label;
-        v.label.color = ready ? textColor : dimText;
+        // 못 누르는 칸도 이름은 읽혀야 한다 — dimText 는 어두운 띠 위에서 묻혔다. 아이콘이 흐려진 것으로 충분히 구분된다
+        v.label.color = ready ? textColor : DisabledText;
         v.band.enabled = !string.IsNullOrEmpty(label);
         v.frame.color = Color.white;
-        v.key.color = ready ? goldText : dimText;
+        v.key.color = ready ? goldText : DisabledText;
+        v.keyChip.enabled = true;
         v.title = title; v.body = body; v.ready = ready; v.onClick = click;
     }
 
@@ -1726,9 +1852,12 @@ public partial class GenesisHud : MonoBehaviour
         v.band.enabled = false;
         v.button.interactable = false;
         v.frame.color = new Color(0.55f, 0.58f, 0.7f, 0.4f);   // 빈 칸은 자리만 보이게 — 금테 여덟 개가 다 밝으면 시끄럽다
-        v.key.color = new Color(dimText.r, dimText.g, dimText.b, 0.35f);
+        v.key.color = new Color(dimText.r, dimText.g, dimText.b, 0.6f);   // 빈 칸 — 받침 없이 흐리게 자리만
+        v.keyChip.enabled = false;
         v.title = null; v.onClick = null; v.ready = false;
     }
+
+    static readonly Color DisabledText = new Color(0.80f, 0.82f, 0.88f);
 
     // 마우스가 올라가 있는 칸. 칸 내용은 0.1초마다 다시 채워지므로(UpdateSelection),
     // 설명도 그때 같이 새로 쓴다 — 연구를 사면 레벨과 비용이 바로 바뀌어야 한다

@@ -140,6 +140,10 @@ public class UnitArt : MonoBehaviour
 
         public float hitEffectSize = 1f;
 
+        [Tooltip("공격할 때 나는 소리 (제우스 = 번개). 여럿이면 번갈아 — 같은 소리가 연달아 나면 금방 질린다. 비우면 소리 없음")]
+        public AudioClip[] attackSounds;
+        [Range(0f, 1f)] public float attackVolume = 0.5f;
+
         [Tooltip("빛구슬·꼬리 색. 알파 0 이면 문화권 색을 쓴다")]
         public Color fxColor = new Color(0f, 0f, 0f, 0f);
 

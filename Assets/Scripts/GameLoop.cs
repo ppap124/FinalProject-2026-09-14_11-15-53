@@ -60,6 +60,10 @@ public class GameLoop : MonoBehaviour
     public int bossInterval = 10;
     [Tooltip("보스 체력 = 그 라운드 전체 체력 x 이 배수")]
     public float bossHpMult = 1.5f;
+    [Tooltip("보스마다 체력에 한 번 더 곱한다 — 10 · 20 · 30 · 40라운드 순서. 비거나 모자라면 1.\n\n" +
+             "40라운드만 0.7: 잘하는 봇도 늘 마지막 허용 라운드(42)에 3~21초 남기고 겨우 잡았고, 조금만 약하면 졌다 " +
+             "(30라운드 보스는 그 라운드나 다음에 잡는다). 30→40 에 체력이 9배 뛰는 게 유닛이 크는 것보다 가팔랐다 (기획 §65)")]
+    public float[] bossHpScale = { 1f, 1f, 1f, 0.7f };
     [Tooltip("이 라운드 수 안에 못 잡으면 게임오버")]
     public int bossGraceRounds = 2;
     public float bossSpeedMult = 0.6f;
@@ -76,6 +80,9 @@ public class GameLoop : MonoBehaviour
 
     [Header("패배 조건")]
     public int fieldLimit = 100;
+    [Tooltip("필드 몹 수가 한도의 이 비율을 넘을 때마다 경고음 (올라갈 때만, 한 칸에 한 번)")]
+    public float[] dangerAt = { 0.7f, 0.9f };
+    int dangerLevel;
 
     [Header("최종 — 50라운드 카오스")]
     public int finalRound = 50;
@@ -86,7 +93,7 @@ public class GameLoop : MonoBehaviour
     [Tooltip("카오스 체력 (고정). 0 이면 보스 공식 × finalHpMult.\n\n" +
              "**몹 성장률과 떼어 둔다** — 공식을 따르면 성장률을 0.02 만 올려도 카오스가 2.6배가 되어 " +
              "잘하는 봇도 체력의 95% 를 남겼다. 잘하는 봇이 100초 안팎(제한 120초)에 잡는 양 — 빌드 측정 (기획 §51 · §54)")]
-    public float chaosHp = 70000000f;
+    public float chaosHp = 55000000f;
     [Tooltip("카오스 눈알 지름(월드). 발톱 · 고리가 그 밖으로 1.5배쯤 더 뻗는다")]
     public float chaosDiameter = 20f;
     [Tooltip("카오스가 떠 있는 자리 — 먼 쪽 벽 너머 하늘. 길을 걷지 않는다 (기획 §61)")]
@@ -162,6 +169,8 @@ public class GameLoop : MonoBehaviour
         if (route == null) route = FindFirstObjectByType<PathRoute>();
         // 피해 기록은 static 이라 다시 하기(씬 다시 읽기)에도 남는다 — 판마다 비운다 (결과 창 피해 순위)
         Monster.DamageLog.Clear();
+        // 스킬 연출 수명(FxLife)은 처음 도는 프레임에 코드 번역(JIT)이 50ms 걸려 첫 스킬 때 화면이 끊겼다 — 판 시작에 한 번 돌려 둔다
+        new GameObject("FxWarm").AddComponent<FxLife>().kind = FxLife.Kind.LightOnly;
         EnterPrep();
     }
 
@@ -188,6 +197,7 @@ public class GameLoop : MonoBehaviour
         }
 
         SpawnTick();
+        DangerTick();
         CheckBossDeadline();
         if (phase == Phase.Over) return;
 
@@ -239,6 +249,21 @@ public class GameLoop : MonoBehaviour
         }
 
         if (RoundStarted != null) RoundStarted(round);
+    }
+
+    /// <summary>
+    /// 필드가 차오르면 경고음 — 한도의 70% · 90% 를 넘는 순간 한 번씩. 내려가면 다시 울릴 수 있게 칸을 낮춘다
+    /// (몇 마리 차이로 오르내리며 계속 울리지 않게 한도의 5% 아래로 내려가야 낮춘다)
+    /// </summary>
+    void DangerTick()
+    {
+        if (dangerAt == null || fieldLimit <= 0) return;
+        float r = alive.Count / (float)fieldLimit;
+        int lv = 0;
+        for (int i = 0; i < dangerAt.Length; i++) if (r >= dangerAt[i]) lv = i + 1;
+        if (lv > dangerLevel) GenesisAudio.Play(GenesisAudio.Cue.Danger);
+        if (lv > dangerLevel) dangerLevel = lv;
+        else if (dangerLevel > 0 && r < dangerAt[dangerLevel - 1] - 0.05f) dangerLevel--;
     }
 
     void SpawnTick()
@@ -298,6 +323,7 @@ public class GameLoop : MonoBehaviour
         m.Init(route, BossHp(round), monsterSpeed * bossSpeedMult);
         m.Emerge(emergeTime * 2.2f, bossSize * 1.15f);   // 보스는 천천히, 크게
         SpawnRift.Emerge(go.transform.position, true);
+        GenesisAudio.Play(GenesisAudio.Cue.BossEmerge);
 
         alive.Add(m);
         bosses.Add(m);
@@ -361,7 +387,7 @@ public class GameLoop : MonoBehaviour
 
             if (round > b.bossRound + bossGraceRounds)
             {
-                GameOver($"{b.bossRound}라운드 보스를 {bossGraceRounds}라운드 안에 잡지 못했습니다");
+                GameOver($"{b.bossRound}라운드 보스를 {bossGraceRounds}라운드 안에 잡지 못했습니다 (남은 체력 {b.HpRatio * 100f:0}%)");
                 return;
             }
         }
@@ -376,7 +402,7 @@ public class GameLoop : MonoBehaviour
             count = Mathf.Max(1, bossRound / bossInterval);
 
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        sb.Append($"[보스] R{bossRound} 격파 → ");
+        sb.Append($"[보스] R{bossRound} 격파 ({round}라운드 · 남은 시간 {timer:0}초) → ");
 
         for (int i = 0; i < count; i++)
         {
@@ -409,7 +435,12 @@ public class GameLoop : MonoBehaviour
         return roll < 0.15f ? 2 : roll < 0.70f ? 3 : 4;
     }
 
-    public float BossHp(int r) => SpawnCount(r) * MonsterHp(r) * bossHpMult;
+    public float BossHp(int r)
+    {
+        int k = bossInterval > 0 ? r / bossInterval - 1 : -1;
+        float scale = bossHpScale != null && k >= 0 && k < bossHpScale.Length ? bossHpScale[k] : 1f;
+        return SpawnCount(r) * MonsterHp(r) * bossHpMult * scale;
+    }
     public float ChaosHp => chaosHp > 0f ? chaosHp : BossHp(finalRound) * finalHpMult;
 
     // ── 몬스터 조회 ───────────────────────────
@@ -428,7 +459,7 @@ public class GameLoop : MonoBehaviour
             GoldBank.Instance.Add(GoldForKill(boss));
 
         kills++;
-        if (m != chaos) GenesisAudio.Play(GenesisAudio.Cue.Kill);
+        if (m != chaos) GenesisAudio.Play(boss ? GenesisAudio.Cue.BossDown : GenesisAudio.Cue.Kill);
 
         if (m != null && m == chaos)
         {
