@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 /// 워크래프트식 마우스 조작.
 ///   좌클릭 / 드래그   선택 (영혼 또는 유닛)
 ///   Shift + 좌클릭    선택에 추가
+///   더블클릭          화면에 보이는 같은 종류 전부
 ///   우클릭            선택한 것을 그 자리로 이동
 ///   ESC               선택 해제
 ///
@@ -25,7 +26,27 @@ public class UnitControl : MonoBehaviour
     bool dragging;
 
     public int SelectedCount => selected.Count;
+
+    /// <summary>고른 유닛 i번째 (히든 조합 칸이 두 마리를 본다)</summary>
+    public Unit SelectedAt(int i)
+    {
+        selected.RemoveAll(x => x == null);
+        return i >= 0 && i < selected.Count ? selected[i] : null;
+    }
     public int SelectedSoulCount => souls.Count;
+
+    /// <summary>뭐라도 골라 두었다 (유닛 · 영혼 · 열린 건물) — Esc 가 메뉴 대신 이걸 먼저 푼다</summary>
+    public bool HasSelection
+    {
+        get
+        {
+            selected.RemoveAll(x => x == null);
+            souls.RemoveAll(x => x == null);
+            return selected.Count > 0 || souls.Count > 0
+                || (ResearchBuilding.Instance != null && ResearchBuilding.Instance.open)
+                || (WarehouseBuilding.Instance != null && WarehouseBuilding.Instance.open);
+        }
+    }
 
     /// <summary>딱 하나만 고른 유닛. 조합창은 이때만 뜨다.</summary>
     public Unit SoleSelectedUnit
@@ -51,7 +72,9 @@ public class UnitControl : MonoBehaviour
         Keyboard k = Keyboard.current;
         if (m == null) return;
 
-        if (k != null && k.escapeKey.wasPressedThisFrame) ClearSelection();
+        if (GenesisHud.Paused) { dragging = false; UpdateHover(Vector2.zero, false); return; }
+        // HUD 가 있으면 Esc 는 HUD 가 맡는다 (선택이 있으면 해제, 없으면 일시정지 메뉴)
+        if (k != null && k.escapeKey.wasPressedThisFrame && !GenesisHud.HandlesEscape) ClearSelection();
 
         // **HUD 위를 누른 것은 땅을 누른 게 아니다.** 이게 없으면 조합 버튼을 누르는 순간
         // 그 뒤 땅이 같이 눌려서 선택이 풀리고, 버튼은 빈 선택에 대고 실행된다
@@ -76,13 +99,15 @@ public class UnitControl : MonoBehaviour
         }
 
         if (m.rightButton.wasPressedThisFrame && !overUi) IssueMove(m.position.ReadValue());
+
+        UpdateHover(m.position.ReadValue(), !overUi && !dragging);
     }
 
     // ── 선택 ──────────────────────────────────
 
     void ClickSelect(Vector2 screenPos, bool add)
     {
-        // 건물을 먼저 본다 — 클릭하면 창이 열린다
+        // 건물을 먼저 본다 — 클릭하면 건물이 선택된다
         Ray ray = cam.ScreenPointToRay(screenPos);
         RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
 
@@ -99,35 +124,75 @@ public class UnitControl : MonoBehaviour
             if (w != null && h.distance < wareD) { wareD = h.distance; ware = w; }
         }
 
-        if (lab != null && labD <= wareD) { lab.Toggle(); return; }
-        if (ware != null) { ware.Toggle(); return; }
+        // 건물은 유닛처럼 **선택**된다 — 명령은 HUD 콘솔이 띄운다 (GenesisHud.ShowLab / ShowWarehouse)
+        if (lab != null && labD <= wareD) { ClearSelection(); lab.open = true; return; }
+        if (ware != null) { ClearSelection(); ware.open = true; return; }
 
         if (!add) ClearSelection();
 
+        // 더블클릭 — 화면에 보이는 같은 종류를 전부 고른다. 창고에 한꺼번에 넣을 때 쓴다
+        bool twice = Time.unscaledTime - lastClickTime <= doubleClickTime;
+        lastClickTime = Time.unscaledTime;
+
         SoulAvatar soul = SoulUnderCursor(screenPos);
-        if (soul != null) { SelectSoul(soul); return; }
-
-        Unit hit = UnitUnderCursor(screenPos);
-        if (hit != null) SelectUnit(hit);
-    }
-
-    ResearchBuilding LabUnderCursor(Vector2 screenPos)
-    {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
-        ResearchBuilding best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
+        if (soul != null)
         {
-            ResearchBuilding p = h.collider.GetComponentInParent<ResearchBuilding>();
-            if (p == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = p; }
+            if (twice && lastClickSoul) { SelectAllOnScreen(null); lastClickTime = -1f; return; }
+            lastClickSoul = true; lastClickType = null;
+            SelectSoul(soul);
+            return;
         }
 
-        return best;
+        Unit hit = UnitUnderCursor(screenPos);
+        if (hit == null) { lastClickSoul = false; lastClickType = null; return; }
+
+        if (twice && lastClickType == hit.type) { SelectAllOnScreen(hit.type); lastClickTime = -1f; return; }
+        lastClickSoul = false; lastClickType = hit.type;
+        SelectUnit(hit);
+    }
+
+    [Tooltip("이 시간(초) 안에 두 번 누르면 더블클릭")]
+    public float doubleClickTime = 0.35f;
+
+    float lastClickTime = -1f;
+    UnitType? lastClickType;
+    bool lastClickSoul;
+
+    /// <summary>화면에 보이는 같은 종류를 전부 고른다. type 이 null 이면 영혼</summary>
+    void SelectAllOnScreen(UnitType? type)
+    {
+        if (type == null)
+        {
+            foreach (SoulAvatar s in SoulAvatar.All)
+                if (s != null && OnScreen(s.transform.position)) SelectSoul(s);
+            return;
+        }
+
+        if (SoulShop.Instance == null) return;
+        foreach (Unit u in SoulShop.Instance.Units)
+            if (u != null && u.type == type.Value && OnScreen(u.transform.position)) SelectUnit(u);
+    }
+
+    bool OnScreen(Vector3 world)
+    {
+        Vector3 v = cam.WorldToViewportPoint(world);
+        return v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
+    }
+
+    /// <summary>고른 유닛을 전부 창고에 넣는다. 넣은 수를 돌려준다 (정비 시간에만)</summary>
+    public int StoreSelected()
+    {
+        Warehouse w = Warehouse.Instance;
+        if (w == null || !w.CanMove) return 0;
+
+        selected.RemoveAll(u => u == null);
+        List<Unit> list = new List<Unit>(selected);
+        ClearSelection();
+
+        int n = 0;
+        foreach (Unit u in list)
+            if (w.Store(u)) n++;
+        return n;
     }
 
     void BoxSelect(Vector2 a, Vector2 b, bool add)
@@ -164,48 +229,105 @@ public class UnitControl : MonoBehaviour
         }
     }
 
+    // ── 고르기 판정 ──────────────────────────
+    // 예전엔 발밑 실린더(반지름 0.9 · 높이 1.6)에 광선을 쏴서, 비스듬한 카메라로 보이는 몸통이나 머리를 누르면
+    // 빗나갔다. 이제 **화면에서** 잰다 — 발에서 머리까지 이은 선에 커서가 몸 폭 + pickRadius 안이면 잡히고,
+    // 여럿이면 선에 가장 가까운 것. 대충 근처를 눌러도 잡히고, 겹쳐 있으면 커서 쪽이 잡힌다
+
+    [Tooltip("클릭 여유(1080 기준 픽셀) — 몸통 선에서 이만큼 + 몸 폭 반 안이면 잡힌다")]
+    public float pickRadius = 22f;
+
+    readonly Dictionary<Unit, float> bodyHeights = new Dictionary<Unit, float>();
+
+    /// <summary>발바닥에서 모델 머리까지 높이(월드). 모델 렌더러 범위로 한 번 재 둔다</summary>
+    float BodyHeight(Unit u)
+    {
+        float h;
+        if (bodyHeights.TryGetValue(u, out h)) return h;
+        float ground = u.transform.position.y - u.transform.localScale.y;   // 실린더 반높이 = scale.y
+        float top = float.MinValue;
+        foreach (Renderer r in u.GetComponentsInChildren<Renderer>())
+        {
+            if (!r.enabled || r is LineRenderer || r is ParticleSystemRenderer || r is TrailRenderer) continue;
+            if (r.gameObject == u.gameObject) continue;   // 실린더 자신
+            top = Mathf.Max(top, r.bounds.max.y);
+        }
+        h = top > ground ? Mathf.Min(top - ground, 8f) : u.transform.localScale.y * 2f;
+        if (top > ground) bodyHeights[u] = h;   // 모델이 아직 없으면 다음에 다시 잰다
+        return h;
+    }
+
+    /// <summary>커서에서 발~머리 선까지 화면 거리를 그 몸의 잡히는 반경으로 나눈 값. 1 이하면 잡힌다</summary>
+    float PickScore(Vector2 p, Vector3 foot, float height, float halfWidth)
+    {
+        Vector3 a = cam.WorldToScreenPoint(foot), b = cam.WorldToScreenPoint(foot + Vector3.up * height);
+        if (a.z <= 0f || b.z <= 0f) return float.MaxValue;
+        Vector3 side = cam.WorldToScreenPoint(foot + cam.transform.right * halfWidth);
+        float radius = Vector2.Distance(a, side) + pickRadius * Screen.height / 1080f;
+
+        Vector2 A = a, ab = (Vector2)b - A;
+        float t = ab.sqrMagnitude < 0.01f ? 0f : Mathf.Clamp01(Vector2.Dot(p - A, ab) / ab.sqrMagnitude);
+        return Vector2.Distance(p, A + ab * t) / radius;
+    }
+
     SoulAvatar SoulUnderCursor(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
         SoulAvatar best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
+        float bestScore = 1f;
+        foreach (SoulAvatar s in SoulAvatar.All)
         {
-            SoulAvatar s = h.collider.GetComponentInParent<SoulAvatar>();
-            if (s == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = s; }
+            if (s == null || s.Consumed) continue;
+            Vector3 sc = s.transform.localScale;
+            float score = PickScore(screenPos, s.transform.position - Vector3.up * sc.y, sc.y * 2.2f, sc.x * 0.5f);
+            if (score <= bestScore) { bestScore = score; best = s; }
         }
-
         return best;
     }
 
     Unit UnitUnderCursor(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 300f, ~0, QueryTriggerInteraction.Collide);
-
+        if (SoulShop.Instance == null) return null;
         Unit best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (RaycastHit h in hits)
+        float bestScore = 1f;
+        foreach (Unit u in SoulShop.Instance.Units)
         {
-            Unit u = h.collider.GetComponentInParent<Unit>();
             if (u == null) continue;
-
-            if (h.distance < bestDist) { bestDist = h.distance; best = u; }
+            Vector3 foot = u.transform.position - Vector3.up * u.transform.localScale.y;
+            float score = PickScore(screenPos, foot, BodyHeight(u), u.transform.localScale.x * 0.35f);
+            if (score <= bestScore) { bestScore = score; best = u; }
         }
-
         return best;
+    }
+
+    // ── 올려 두기 — 누르기 전에 무엇이 잡힐지 흐린 고리로 보인다 ──
+
+    Unit hoverUnit;
+    SoulAvatar hoverSoul;
+
+    void UpdateHover(Vector2 screenPos, bool show)
+    {
+        SoulAvatar s = show ? SoulUnderCursor(screenPos) : null;
+        Unit u = show && s == null ? UnitUnderCursor(screenPos) : null;   // 고를 때와 같은 순서 — 영혼이 먼저
+
+        if (s != hoverSoul) { if (hoverSoul != null) hoverSoul.SetHover(false); hoverSoul = s; }
+        if (u != hoverUnit) { if (hoverUnit != null) hoverUnit.SetHover(false); hoverUnit = u; }
+        if (hoverSoul != null) hoverSoul.SetHover(true);   // 고른 뒤 풀렸다 다시 올라와도 켜지게 매번
+        if (hoverUnit != null) hoverUnit.SetHover(true);
+
+        // 조합 · 창고로 사라진 유닛의 키 높이는 버린다 — 판 내내 사전이 자라지 않게
+        if (bodyHeights.Count > 120)
+        {
+            List<Unit> gone = new List<Unit>();
+            foreach (Unit k in bodyHeights.Keys) if (k == null) gone.Add(k);
+            foreach (Unit k in gone) bodyHeights.Remove(k);
+        }
     }
 
     void SelectSoul(SoulAvatar s)
     {
         if (s == null || souls.Contains(s)) return;
 
+        CloseBuildings();
         souls.Add(s);
         s.SetSelected(true);
     }
@@ -214,12 +336,22 @@ public class UnitControl : MonoBehaviour
     {
         if (u == null || selected.Contains(u)) return;
 
+        CloseBuildings();
         selected.Add(u);
         u.SetSelected(true);
     }
 
+    /// <summary>건물 선택을 푼다. 유닛·영혼을 고르면 건물은 내려놓는다</summary>
+    void CloseBuildings()
+    {
+        if (ResearchBuilding.Instance != null) ResearchBuilding.Instance.open = false;
+        if (WarehouseBuilding.Instance != null) WarehouseBuilding.Instance.open = false;
+    }
+
     public void ClearSelection()
     {
+        CloseBuildings();
+
         foreach (Unit u in selected)
             if (u != null) u.SetSelected(false);
         selected.Clear();
@@ -248,6 +380,28 @@ public class UnitControl : MonoBehaviour
         // 전투 유닛은 겹치면 사거리가 낭비되므로 흔다
         for (int i = 0; i < selected.Count; i++)
             selected[i].MoveTo(dest + Offset(i, selected.Count, 2.6f));
+    }
+
+    /// <summary>
+    /// 고른 영혼을 그 일을 하는 패드로 보낸다 — 명령 칸 단축키용. 먹는 건 패드가
+    /// 한다(`TriggerBlock`). 바로 뽑아 주지 않고 **걸어가게** 두는 건, 패드 규칙을
+    /// 건너뛰면 영혼 블록이 장식이 되기 때문이다. 보낼 패드가 없으면 false
+    /// </summary>
+    public bool SendSoulsTo(TriggerBlock.Action action)
+    {
+        souls.RemoveAll(s => s == null);
+        if (souls.Count == 0) return false;
+
+        TriggerBlock pad = null;
+        foreach (TriggerBlock t in FindObjectsByType<TriggerBlock>(FindObjectsSortMode.None))
+            if (t.action == action && t.isActiveAndEnabled) { pad = t; break; }
+        if (pad == null) return false;
+
+        Vector3 dest = pad.transform.position;
+        dest.y = 0f;
+        foreach (SoulAvatar s in souls) s.MoveTo(dest);
+        ClearSelection();
+        return true;
     }
 
     Vector3 Offset(int i, int n, float gap)

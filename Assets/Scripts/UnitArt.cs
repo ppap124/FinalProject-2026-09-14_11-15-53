@@ -34,7 +34,8 @@ public class UnitArt : MonoBehaviour
                  "중심이 손에 박혀 절반이 몸통을 뚫는다")]
         public Vector3 localPosition;
 
-        [Tooltip("glTFast는 프롭을 이미 세워서(긴 축 Y) 임포트한다. 보통 0으로 두면 된다")]
+        [Tooltip("glTFast는 프롭을 대개 세워서(긴 축 Y) 임포트한다. 보통 0으로 두면 된다. " +
+                 "단, 눕혀서(긴 축 X) 나온 것도 있다 — 타락한 인간의 검이 그래서 Z 90 으로 세운다")]
         public Vector3 localEuler = Vector3.zero;
 
         [Tooltip("각도를 손 본이 아니라 몸 기준으로 잡는다. 손 본은 T포즈에서 제멋대로 돌아가 있어서 이게 없으면 방패가 날 선다")]
@@ -139,6 +140,10 @@ public class UnitArt : MonoBehaviour
 
         public float hitEffectSize = 1f;
 
+        [Tooltip("공격할 때 나는 소리 (제우스 = 번개). 여럿이면 번갈아 — 같은 소리가 연달아 나면 금방 질린다. 비우면 소리 없음")]
+        public AudioClip[] attackSounds;
+        [Range(0f, 1f)] public float attackVolume = 0.5f;
+
         [Tooltip("빛구슬·꼬리 색. 알파 0 이면 문화권 색을 쓴다")]
         public Color fxColor = new Color(0f, 0f, 0f, 0f);
 
@@ -186,6 +191,232 @@ public class UnitArt : MonoBehaviour
 
     [Tooltip("기준 자세에서 몇 초 지점을 쓸지")]
     public float equipPoseTime = 0f;
+
+    [Header("단계 오라")]
+    [Tooltip("필드의 3단계 유닛 발밑 오라 — 조합표 전시와 같은 것. " +
+             "에셋 스토어 팩(@Asset)이라 비어 있으면 그냥 안 붙는다")]
+    public GameObject tier3Aura;
+
+    [Tooltip("4단계 유닛 발밑 마법진")]
+    public GameObject tier4Aura;
+
+    [Tooltip("오라 크기 — 유닛 덩치에 곱한다. 덩치가 단계마다 달라서 절대값으로 두면 4단계만 작아 보인다")]
+    public float auraScale = 0.55f;
+
+    /// <summary>
+    /// 3·4단계 유닛 발밑에 오라를 붙인다. 자식이라 유닛이 움직이면 같이 가고, 죽거나 조합되면 같이 사라진다.
+    /// 돌려주는 값은 오라 반지름(월드). 선택 고리를 그 바깥에 그리려고 쓴다 — 0 이면 오라가 없다.
+    /// </summary>
+    public static float Aura(Transform unit, int tier, float size)
+    {
+        if (Instance == null || unit.Find("Aura") != null) return 0f;
+        GameObject prefab = tier == 3 ? Instance.tier3Aura : tier == 4 ? Instance.tier4Aura : null;
+        if (prefab == null) return 0f;
+
+        GameObject g = Instantiate(prefab, unit);
+        g.name = "Aura";
+        // 부모 실린더가 (size, size*0.45, size)로 납작하고 중심이 반높이에 있다 — 발바닥이 로컬 y=-1.
+        // 바닥에 딱 붙이면 땅에 묻혀 깜빡이므로 조금 띄운다
+        g.transform.localPosition = new Vector3(0f, -1f + 0.05f / (size * 0.45f), 0f);
+        g.transform.localRotation = prefab.transform.localRotation;
+        float k = Instance.auraScale;
+        g.transform.localScale = Vector3.Scale(prefab.transform.localScale, new Vector3(k, k / 0.45f, k));
+
+        // 가장 큰 파티클 = 바닥 문양. 그 절반이 반지름이다
+        float biggest = 0f;
+        foreach (ParticleSystem ps in g.GetComponentsInChildren<ParticleSystem>())
+            biggest = Mathf.Max(biggest, ps.main.startSize.constantMax * ps.transform.lossyScale.x);
+        return biggest * 0.5f;
+    }
+
+    [Header("전설 (4단계)")]
+    [Tooltip("4단계 유닛 둘레에 문화권 빛 불티가 피어오른다. 마법진만으로는 3단계 룬 오라와 격이 안 갈렸다")]
+    public bool legendMotes = true;
+    [Tooltip("4단계 마법진을 문화권 색(그리스 금 · 북유럽 서리 · 한국 붉은빛)으로 물들인다")]
+    public bool legendTint = true;
+    [Tooltip("초당 불티 수")]
+    public float legendRate = 22f;
+    [Tooltip("불티가 오르는 높이(월드) — 유닛 머리 위까지")]
+    public float legendRise = 4.2f;
+    [Tooltip("유닛 발밑 빛 세기. 0 이면 빛 없이 불티만")]
+    public float legendLight = 1.4f;
+
+    static Material legendMat;
+    static Texture2D legendDot;
+
+    /// <summary>
+    /// 4단계 유닛에 **전설 표식**을 붙인다 — 발밑 둘레에서 문화권 빛 불티가 머리 위로 피어오르고,
+    /// 발밑에 옅은 빛이 깔린다. radius 는 마법진 반지름(Aura 가 돌려준 값).
+    /// 부모 실린더가 납작하게 눌려 있어서, 배율을 되돌린 자식을 하나 두고 그 밑에 만든다
+    /// </summary>
+    public static void Legend(Transform unit, float radius, Color col)
+    {
+        if (Instance == null || unit.Find("Legend") != null) return;
+
+        // 마법진이 셋 다 같은 파랑이라 제우스·오딘·환웅이 발밑만 보면 구분이 안 됐고,
+        // 문화권 빛 불티도 그 파란 빛기둥에 묻혀 하얗게 보였다. 마법진을 문화권 색으로 물들인다
+        if (Instance.legendTint) TintAura(unit.Find("Aura"), col);
+        if (!Instance.legendMotes) return;
+
+        GameObject root = new GameObject("Legend");
+        root.transform.SetParent(unit, false);
+        Vector3 s = unit.lossyScale;
+        root.transform.localScale = new Vector3(1f / Mathf.Max(0.0001f, s.x), 1f / Mathf.Max(0.0001f, s.y), 1f / Mathf.Max(0.0001f, s.z));
+        root.transform.localPosition = new Vector3(0f, -1f, 0f);   // 발바닥
+        float r = Mathf.Max(0.8f, radius * 0.75f);
+
+        // ── 불티 ──
+        GameObject g = new GameObject("Motes");
+        g.transform.SetParent(root.transform, false);
+        g.transform.localPosition = Vector3.up * 0.15f;
+        g.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);   // 원 모양 방출이 바닥에 눕고, 위로 뿜는다
+        ParticleSystem ps = g.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+        float life = 2.2f;
+        var main = ps.main;
+        main.loop = true;
+        main.duration = 5f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(life * 0.7f, life);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(Instance.legendRise / life * 0.6f, Instance.legendRise / life * 1.2f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.22f, 0.5f);
+        // 문화권 빛깔은 발광용이라 옅다 — 가산 혼합에 블룸까지 얹히면 셋 다 흰 불티가 된다. 채도를 올린다
+        float h, sat, val;
+        Color.RGBToHSV(col, out h, out sat, out val);
+        Color deep = Color.HSVToRGB(h, Mathf.Min(1f, sat * 1.6f + 0.15f), val);
+        main.startColor = new ParticleSystem.MinMaxGradient(deep, Color.Lerp(deep, Color.white, 0.25f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;   // 걸어가면 뒤에 꼬리가 남는다
+        main.scalingMode = ParticleSystemScalingMode.Shape;
+        main.maxParticles = 80;
+        main.prewarm = true;
+
+        var em = ps.emission;
+        em.rateOverTime = Instance.legendRate;
+
+        var sh = ps.shape;
+        // **원(Circle)이 아니라 원뿔이다.** 원은 바닥을 따라 바깥으로 쏘아서 불티가 마법진 밑에만 깔렸다.
+        // 거의 곧게 선 원뿔이라야 둘레에서 위로 오른다
+        sh.shapeType = ParticleSystemShapeType.Cone;
+        sh.angle = 6f;
+        sh.radius = r;
+        sh.radiusThickness = 0.35f;   // 둘레 쪽에서만 — 몸 한가운데서 솟으면 모델에 가려진다
+
+        // 오르며 안쪽으로 살짝 모이고 흔들린다 — 곧게만 오르면 비가 거꾸로 오는 것 같다
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = true;
+        vel.space = ParticleSystemSimulationSpace.Local;
+        vel.radial = new ParticleSystem.MinMaxCurve(-0.25f);
+        vel.orbitalZ = new ParticleSystem.MinMaxCurve(0.6f);
+        var noise = ps.noise;
+        noise.enabled = true;
+        noise.strength = 0.35f;
+        noise.frequency = 0.8f;
+
+        var colL = ps.colorOverLifetime;
+        colL.enabled = true;
+        Gradient fade = new Gradient();
+        fade.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                     new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.15f), new GradientAlphaKey(0.7f, 0.6f), new GradientAlphaKey(0f, 1f) });
+        colL.color = fade;
+
+        var size = ps.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1f, 1f, 0.3f));
+
+        ParticleSystemRenderer pr = g.GetComponent<ParticleSystemRenderer>();
+        pr.sharedMaterial = LegendMaterial();
+        pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        pr.receiveShadows = false;
+        ps.Play();
+
+        // ── 발밑 빛 — 둘레 바닥과 유닛 다리를 문화권 빛으로 물들인다 ──
+        if (Instance.legendLight > 0f)
+        {
+            Light l = new GameObject("Glow").AddComponent<Light>();
+            l.transform.SetParent(root.transform, false);
+            l.transform.localPosition = Vector3.up * 1.2f;
+            l.type = LightType.Point;
+            l.color = col;
+            l.intensity = Instance.legendLight;
+            l.range = r * 2.6f + 1.5f;
+            l.shadows = LightShadows.None;
+        }
+    }
+
+    /// <summary>
+    /// 오라 파티클의 **색조만** 문화권 색으로 바꾼다 — 밝기·채도는 원본을 그대로 둬서
+    /// 마법진의 명암(어두운 불티, 밝은 테두리)이 살아 있게 한다. 재질은 흰색이라 건드리지 않는다
+    /// </summary>
+    static void TintAura(Transform aura, Color col)
+    {
+        if (aura == null) return;
+        float hue, s, v;
+        Color.RGBToHSV(col, out hue, out s, out v);
+
+        foreach (ParticleSystem ps in aura.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            var main = ps.main;
+            ParticleSystem.MinMaxGradient sc = main.startColor;
+            if (sc.mode == ParticleSystemGradientMode.Color) main.startColor = Hue(sc.color, hue);
+            else if (sc.mode == ParticleSystemGradientMode.TwoColors)
+                main.startColor = new ParticleSystem.MinMaxGradient(Hue(sc.colorMin, hue), Hue(sc.colorMax, hue));
+
+            var cl = ps.colorOverLifetime;
+            if (cl.enabled && cl.color.mode == ParticleSystemGradientMode.Gradient)
+            {
+                Gradient g = cl.color.gradient;
+                GradientColorKey[] keys = g.colorKeys;
+                for (int i = 0; i < keys.Length; i++) keys[i].color = Hue(keys[i].color, hue);
+                Gradient ng = new Gradient();
+                ng.SetKeys(keys, g.alphaKeys);
+                cl.color = ng;
+            }
+        }
+
+        foreach (Light l in aura.GetComponentsInChildren<Light>(true)) l.color = col;
+    }
+
+    /// <summary>색조만 갈아 끼운다. 무채색(흰 · 회색)은 그대로 — 흰 테두리가 물들면 탁해진다</summary>
+    static Color Hue(Color c, float hue)
+    {
+        float h, s, v;
+        Color.RGBToHSV(c, out h, out s, out v);
+        if (s < 0.08f) return c;
+        Color o = Color.HSVToRGB(hue, s, v, true);
+        o.a = c.a;
+        return o;
+    }
+
+    /// <summary>불티 재질 — 가산 혼합 둥근 점. 4단계 불티와 스킬 불티가 나눠 쓴다(색은 파티클이 싣는다)</summary>
+    public static Material LegendMaterial()
+    {
+        if (legendMat != null) return legendMat;
+
+        const int n = 32;
+        legendDot = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        legendDot.wrapMode = TextureWrapMode.Clamp;
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+                float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                a = a * a * a;   // 가운데만 밝게 — 알갱이가 뭉개진 동그라미가 아니라 반짝이로 읽힌다
+                legendDot.SetPixel(x, y, new Color(a, a, a, a));
+            }
+        legendDot.Apply();
+
+        legendMat = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+        legendMat.SetFloat("_Surface", 1f);
+        legendMat.SetFloat("_Blend", 2f);   // 가산
+        legendMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        legendMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+        legendMat.SetInt("_ZWrite", 0);
+        legendMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        legendMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        legendMat.SetTexture("_BaseMap", legendDot);
+        legendMat.SetColor("_BaseColor", Color.white * 1.3f);   // 1 을 살짝 넘겨 블룸에 걸리게 — 더 올리면 색이 하얗게 탄다
+        return legendMat;
+    }
 
     Dictionary<UnitType, Entry> map;
 
@@ -276,6 +507,8 @@ public class UnitArt : MonoBehaviour
         // **뱀은 클립이 아니라 코드로 움직인다.** 애니메이터를 달면 이름이 하나
         // 맞는 `Root` 를 사람 클립이 계속 덮어써서 몸이 통째로 들썩인다
         if (e.serpent) model.AddComponent<SerpentMotion>();
+        // 뼈가 없는 짐승(히든)은 숨쉬기 · 튀기만 코드로 준다
+        else if (model.GetComponentInChildren<SkinnedMeshRenderer>(true) == null) model.AddComponent<CreatureMotion>();
 
         RuntimeAnimatorController rac = e.controller != null ? e.controller : Instance.controller;
         if (rac != null && !e.serpent

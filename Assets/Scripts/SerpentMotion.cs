@@ -158,6 +158,9 @@ public class SerpentMotion : MonoBehaviour
     public void Step(float dt)
     {
         if (!ready) return;
+        // 모델을 갈아 끼우거나 지우는 사이 뼈가 사라질 수 있다 — 그때 bones[0] 을 건드려
+        // 매 프레임 오류가 났다. 뼈가 없으면 멈추고, 다시 Init 될 때까지 기다린다
+        if (bones.Count < 3 || bones[0] == null) { ready = false; return; }
         int n = bones.Count;
 
         bool moving = speed > 0.15f;

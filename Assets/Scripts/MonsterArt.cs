@@ -173,6 +173,14 @@ public class MonsterArt : MonoBehaviour
     /// 조건에 맞는 것 중 `fromRound` 가 가장 큰 것. 없으면 null.
     /// 50라운드까지 구간이 다섯이라 선형 탐색으로 충분하다.
     /// </summary>
+    /// <summary>이 라운드에 나오는 몹의 이름 (보스 체력바 위에 쓴다). 없으면 빈 문자열</summary>
+    public static string LabelFor(int round, bool boss)
+    {
+        if (Instance == null) return "";
+        Entry e = Instance.Find(round, boss);
+        return e != null && !string.IsNullOrEmpty(e.label) ? e.label : "";
+    }
+
     Entry Find(int round, bool boss)
     {
         Entry best = null;

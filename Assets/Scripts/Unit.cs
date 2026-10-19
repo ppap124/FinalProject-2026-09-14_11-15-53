@@ -47,6 +47,16 @@ public class Unit : MonoBehaviour
             if (r != null) r.enabled = false;
         }
         else if (r != null) r.material.color = s.color;
+        creature = GetComponentInChildren<CreatureMotion>();
+
+        // 3·4단계는 조합표에서처럼 발밑에 오라가 돈다
+        auraRadius = UnitArt.Aura(transform, s.tier, size);
+
+        // 4단계는 전설 — 마법진 둘레에서 문화권 빛 불티가 피어오른다
+        if (s.tier == 4) UnitArt.Legend(transform, auraRadius, AttackFx.CultureGlow(s.culture));
+
+        // 3·4단계 고유 스킬 — N번째 공격마다
+        skill = UnitSkill.Attach(this);
 
         // 쏘는 것도 종류마다 다르다 — 환웅은 구름을 던진다
         float psize;
@@ -92,21 +102,35 @@ public class Unit : MonoBehaviour
 
         if (on && ring == null)
         {
-            GameObject g = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            g.name = "SelectRing";
-            Destroy(g.GetComponent<Collider>());
-
-            g.transform.SetParent(transform, false);
-            g.transform.localPosition = new Vector3(0f, -0.9f, 0f);
-            g.transform.localScale = new Vector3(1.6f, 0.04f, 1.6f);
-
-            Renderer rr = g.GetComponent<Renderer>();
-            if (rr != null) rr.material.color = new Color(0.3f, 1f, 0.4f);
+            // **꽉 찬 원반이 아니라 가는 고리로.** 전에는 밝은 초록 원반을 깔았는데,
+            // 3·4단계는 발밑에 금빛 오라가 돌아서 초록 면과 노란 빛이 겹쳐 눈이 아팠다.
+            // 고리를 오라 바깥에 그리면 둘이 겹치지 않는다
+            MakeRing(transform, RingRadius);
+            SetHover(false);   // 고르면 흐린 고리는 걷는다 — 선택 고리와 겹쳐 두껍게 보였다
         }
         else if (!on && ring != null)
         {
             Destroy(ring.gameObject);
         }
+    }
+
+    float RingRadius => Mathf.Max(transform.localScale.x * 0.62f, auraRadius + 0.3f);
+
+    /// <summary>마우스가 올라가 있다 — 누르면 이 유닛이 잡힌다는 걸 미리 흐린 고리로 보인다 (UnitControl)</summary>
+    public void SetHover(bool on) { HoverRing(transform, on && !IsSelected, RingRadius); }
+
+    /// <summary>흐린 흰 고리 — 선택 고리(초록)와 같은 자리, 같은 굵기. 유닛과 영혼이 같이 쓴다</summary>
+    public static void HoverRing(Transform owner, bool on, float worldRadius)
+    {
+        Transform ring = owner.Find("HoverRing");
+        if (on && ring == null)
+        {
+            GameObject g = MakeRing(owner, worldRadius);
+            g.name = "HoverRing";
+            LineRenderer lr = g.GetComponent<LineRenderer>();
+            lr.startColor = lr.endColor = new Color(1f, 1f, 1f, 0.7f);   // 0.45 는 밝은 제단 위에서 안 보였다
+        }
+        else if (!on && ring != null) Destroy(ring.gameObject);
     }
 
     void MoveTick()
@@ -177,6 +201,7 @@ public class Unit : MonoBehaviour
             float d = damage;
             if (Syn != null) d *= Syn.DamageMult(Culture);
             if (Lab != null) d *= Lab.DamageMult(Tier);
+            if (Time.time < empowerUntil) d *= empowerMult;   // 화랑 풍류
             return d;
         }
     }
@@ -188,11 +213,48 @@ public class Unit : MonoBehaviour
             float r = attackRate;
             if (Syn != null) r *= Syn.AttackRateMult(Culture);
             if (Lab != null) r *= Lab.AttackRateMult();
+            if (Time.time < frenzyUntil) r *= frenzyMult;   // 베르세르크 광폭화
             return r;
         }
     }
 
     public float EffectiveDps => EffectiveDamage * EffectiveAttackRate;
+
+    // 광폭화 (베르세르크 스킬) — 잠깐 공속이 오른다
+    float frenzyMult = 1f, frenzyUntil;
+    public bool IsFrenzied => Time.time < frenzyUntil;
+
+    public void Frenzy(float mult, float duration)
+    {
+        frenzyMult = mult;
+        frenzyUntil = Time.time + duration;
+        cooldown = Mathf.Min(cooldown, 1f / Mathf.Max(0.01f, EffectiveAttackRate));   // 바로 빨라지게
+    }
+
+    // 공격력 강화 (화랑 풍류) — 공속 강화(케이론)와 칸이 달라 둘이 겹친다
+    float empowerMult = 1f, empowerUntil;
+
+    /// <summary>남이 걸어 주는 공격력 증가. 더 센 것이 걸려 있으면 덮지 않는다. 걸었으면 true</summary>
+    public bool Empower(float mult, float duration)
+    {
+        if (Time.time < empowerUntil && empowerMult > mult) return false;
+        empowerMult = mult;
+        empowerUntil = Mathf.Max(empowerUntil, Time.time + duration);
+        return true;
+    }
+
+    /// <summary>
+    /// 남이 걸어 주는 공속 증가 (케이론 스킬). 광폭화와 같은 칸을 쓰되, 이미 **더 센** 광폭화가
+    /// 걸려 있으면 덮지 않는다 — 베르세르크의 ×1.8 이 ×1.3 으로 깎이면 안 된다. 걸었으면 true
+    /// </summary>
+    public bool Inspire(float mult, float duration)
+    {
+        if (IsFrenzied && frenzyMult > mult) return false;
+        float until = Time.time + duration;
+        if (IsFrenzied && frenzyMult >= mult && frenzyUntil >= until) return false;
+        Frenzy(mult, Mathf.Max(duration, frenzyUntil - Time.time));
+        return true;
+    }
 
 
         public UnitType type = UnitType.Warrior;
@@ -212,6 +274,55 @@ public class Unit : MonoBehaviour
 
     public bool IsMoving => moving;
     public bool IsSelected { get; private set; }
+
+    float auraRadius;   // 발밑 오라 반지름(월드). 없으면 0
+
+    /// <summary>
+    /// 발밑 선택 고리. 유닛과 영혼이 같이 쓴다.
+    /// `owner` 는 기본 도형(실린더·캡슐, 높이 2)을 x·z 같은 배율로 눌러 세운 것이어야 한다 — 발바닥이 로컬 y=-1.
+    /// </summary>
+    public static GameObject MakeRing(Transform owner, float worldRadius)
+    {
+        Vector3 s = owner.localScale;
+
+        GameObject g = new GameObject("SelectRing");
+        g.transform.SetParent(owner, false);
+        // 발바닥 바로 위. 부모가 y 로 납작해서 띄울 높이도 그만큼 나눈다
+        g.transform.localPosition = new Vector3(0f, -1f + 0.08f / s.y, 0f);
+        g.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        LineRenderer lr = g.AddComponent<LineRenderer>();
+        lr.useWorldSpace = false;
+        lr.loop = true;
+        lr.alignment = LineAlignment.TransformZ;   // 바닥에 눕힌다
+        lr.widthMultiplier = 0.09f;
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.sharedMaterial = RingMaterial;
+        lr.startColor = lr.endColor = new Color(0.45f, 1f, 0.55f, 0.8f);
+
+        // 90° 눕혔으므로 로컬 x·y 가 바닥의 x·z 다 — 부모의 x 배율만 되돌리면 월드 반지름이 된다
+        const int n = 48;
+        float r = worldRadius / s.x;
+        lr.positionCount = n;
+        for (int i = 0; i < n; i++)
+        {
+            float a = i * Mathf.PI * 2f / n;
+            lr.SetPosition(i, new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, 0f));
+        }
+        return g;
+    }
+
+    static Material ringMat;
+    /// <summary>선택 고리 재질. 유닛마다 새로 만들면 선택할 때마다 재질이 샌다</summary>
+    static Material RingMaterial
+    {
+        get
+        {
+            if (ringMat == null) ringMat = new Material(Shader.Find("Sprites/Default"));
+            return ringMat;
+        }
+    }
+
     public int Tier { get; private set; } = 1;
     public Culture Culture { get; private set; } = Culture.None;
 [Header("전투")]
@@ -277,7 +388,9 @@ public float range = 10f;
             return;
         }
 
-        if (target == null || !InRange(target))
+        // 죽는 중인 몹은 명단에서 빠졌지만 쓰러지는 2초 동안 남아 있다 —
+        // 그걸 계속 노리면 한 마리 잡을 때마다 2초씩 헛손질한다
+        if (target == null || target.IsDying || !InRange(target))
             target = FindTarget();
 
         if (target == null) return;
@@ -286,15 +399,31 @@ public float range = 10f;
 
         if (cooldown <= 0f)
         {
-            Fire();
-            cooldown = 1f / Mathf.Max(0.01f, EffectiveAttackRate);
+            // **한 프레임에 여러 번 쏠 수 있다.** 배속(20배)에서는 한 프레임이 0.3초라
+            // 한 번만 쏘면 공속 3 이상이 전부 잘려 나갔다 — 하피(5.5)가 절반만 쐈다.
+            // 쉬는 동안 쌓인 시간은 한 프레임 몫까지만 인정한다 (몰아 쏘기 방지)
+            float step = 1f / Mathf.Max(0.01f, EffectiveAttackRate);
+            cooldown = Mathf.Max(cooldown, -Time.deltaTime);
+            int shots = 0;
+            while (cooldown <= 0f && shots++ < 8)
+            {
+                Fire();
+                cooldown += step;
+                if (target == null || target.IsDying || !InRange(target)) target = FindTarget();
+                if (target == null) { cooldown = Mathf.Max(cooldown, 0f); break; }
+            }
         }
     }
 
     bool InRange(Monster m)
     {
         if (m == null) return false;
-        return (m.transform.position - transform.position).sqrMagnitude <= range * range;
+        if (GameLoop.Instance != null && GameLoop.Instance.Everywhere(m)) return true;   // 벽 너머의 카오스
+        // 바닥 위 거리로 잰다 — 떠 있는 카오스나 키 큰 보스는 몸 중심이 높아서, 3D 로 재면
+        // 근접 유닛이 바로 옆에 서 있어도 사거리 밖이 된다
+        Vector3 d = m.transform.position - transform.position;
+        d.y = 0f;
+        return d.sqrMagnitude <= range * range;
     }
 
     Monster FindTarget()
@@ -314,6 +443,7 @@ public float range = 10f;
     void Fire()
     {
         if (anim != null) anim.Fire(EffectiveAttackRate);
+        if (creature != null) creature.Strike();
 
         UnitArt.Entry fx = UnitArt.FxFor(type);
         AttackStyle style = fx != null ? fx.style : AttackStyle.Auto;
@@ -364,6 +494,7 @@ public float range = 10f;
 
         p.Init(target, EffectiveDamage, projectileSpeed,
                slowChance, slowAmount, slowDuration);
+        p.source = "평타 · " + UnitTable.Get(type).name;
         p.SetFx(fx != null ? fx.hitEffect : null, fx != null ? fx.hitEffectSize : 1f,
                 fx != null ? fx.arc : 0f, style == AttackStyle.Missile);
 
@@ -379,11 +510,25 @@ public float range = 10f;
             AttackFx.Lightning(target.transform.position + Vector3.up * 0.6f, col, 14f);
         }
 
+        // 공격음 — 근접은 칼이 **닿는 순간**(발사체가 터질 때), 나머지는 쏘는 순간
+        if (fx != null)
+        {
+            if (style == AttackStyle.Melee) p.SetHitSound(fx.attackSounds, fx.attackVolume);
+            else GenesisAudio.PlayAttack(fx.attackSounds, fx.attackVolume);
+        }
+
         if (Syn != null)
             p.SetSynergy(Syn.SplashRadius(Culture), Syn.SplashFraction(Culture),
                          Syn.CritChance(Culture), Syn.CritMult(Culture),
                          Syn.ConfuseTime(Culture));
+
+        if (skill != null) skill.OnAttack(target);
     }
+
+    CreatureMotion creature;   // 뼈 없는 짐승 모델(히든)만
+    UnitSkill skill;
+    /// <summary>고유 스킬. 1단계 · 히든은 null</summary>
+    public UnitSkill Skill => skill;
 
     /// <summary>
     /// 발사체 메시를 지정 크기로 맞추고 콜라이더를 떼어낸다.

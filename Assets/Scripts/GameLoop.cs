@@ -1,13 +1,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 라운드 진행 · 스폰 · 보스 · 필드 마릿수 관리.
 ///
-/// 패배 조건 둘:
+/// 패배 조건 셋:
 ///   1) 필드에 몬스터가 fieldLimit(100)을 넘으면
 ///   2) 보스를 bossGraceRounds(2) 안에 못 잡으면
+///   3) 최종 라운드(50)의 카오스를 finalTimeLimit 안에 못 잡으면
+///
+/// 승리 조건: 카오스를 잡는다. 50라운드는 넘어가지 않는다 — 카오스가 곧 끝이다.
 /// </summary>
 public class GameLoop : MonoBehaviour
 {
@@ -27,13 +31,27 @@ public class GameLoop : MonoBehaviour
 
     [Header("몬스터 — 체력 100 x 1.18^(R-1)")]
     public float baseHp = 100f;
-    public float hpGrowth = 1.18f;
+    [Tooltip("라운드마다 몹 체력이 이만큼 곱해진다. 1.23 — 대충 하면 40라운드 보스나 카오스에서 막히고, " +
+             "잘하면 카오스를 90~115초에 잡는다 (밸런스 봇, 기획 §51). 0.01 만 바꿔도 40라운드 체력이 1.4배 달라진다")]
+    public float hpGrowth = 1.23f;
+    [Tooltip("켜면 시작할 때 고른 난이도(GenesisDifficulty)의 체력 곡선 · 카오스 체력으로 덮는다. 끄면 이 인스펙터 값 그대로")]
+    public bool applyDifficulty = true;
+    /// <summary>이번 판의 난이도</summary>
+    public GenesisDifficulty.Level Difficulty { get; private set; }
     public float monsterSpeed = 6f;
 
     // 길 중심선 둘레가 약 176칸이라, 게임오버 기준치인 **100마리가 한 줄에**
     // 들어가려면 1.76 이 상한이다. 1.8 부터는 서로 파고든다
     [Tooltip("잡몹 키. 1.6 이 100마리가 길 한 줄에 들어가는 한계선이다")]
     public float monsterSize = 1.6f;
+
+    [Tooltip("잡몹이 길 가운데선에서 비켜 걷는 최대 거리. 길이 넓어져서 한 줄이 아니라 " +
+             "여러 줄로 퍼진다. ±3 이면 바깥 줄이 배치 가장자리(16.5)에서 8.5 떨어져 근접(전사 7)이 " +
+             "못 닿았다 — ±2 면 줄이 20~24 라 전사도 닿는다")]
+    public float laneSpread = 2f;
+
+    [Tooltip("몹이 출발점 균열 아래에서 솟아오르는 시간(초). 보스는 2.2배")]
+    public float emergeTime = 0.6f;
 
     [Tooltip("보스 키. 높이 h 는 뒤로 h/(30-h)*41.3 칸을 가린다 — 3.5 면 5.5칸")]
     public float bossSize = 3.5f;
@@ -42,6 +60,10 @@ public class GameLoop : MonoBehaviour
     public int bossInterval = 10;
     [Tooltip("보스 체력 = 그 라운드 전체 체력 x 이 배수")]
     public float bossHpMult = 1.5f;
+    [Tooltip("보스마다 체력에 한 번 더 곱한다 — 10 · 20 · 30 · 40라운드 순서. 비거나 모자라면 1.\n\n" +
+             "40라운드만 0.7: 잘하는 봇도 늘 마지막 허용 라운드(42)에 3~21초 남기고 겨우 잡았고, 조금만 약하면 졌다 " +
+             "(30라운드 보스는 그 라운드나 다음에 잡는다). 30→40 에 체력이 9배 뛰는 게 유닛이 크는 것보다 가팔랐다 (기획 §65)")]
+    public float[] bossHpScale = { 1f, 1f, 1f, 0.7f };
     [Tooltip("이 라운드 수 안에 못 잡으면 게임오버")]
     public int bossGraceRounds = 2;
     public float bossSpeedMult = 0.6f;
@@ -58,6 +80,37 @@ public class GameLoop : MonoBehaviour
 
     [Header("패배 조건")]
     public int fieldLimit = 100;
+    [Tooltip("필드 몹 수가 한도의 이 비율을 넘을 때마다 경고음 (올라갈 때만, 한 칸에 한 번)")]
+    public float[] dangerAt = { 0.7f, 0.9f };
+    int dangerLevel;
+
+    [Header("최종 — 50라운드 카오스")]
+    public int finalRound = 50;
+    [Tooltip("카오스를 잡을 시간(초). 넘기면 패배. 다음 라운드로 넘어가지 않는다")]
+    public float finalTimeLimit = 120f;
+    [Tooltip("보스 체력 공식 위에 곱하는 배수 — chaosHp 가 0 일 때만 쓴다")]
+    public float finalHpMult = 1.5f;
+    [Tooltip("카오스 체력 (고정). 0 이면 보스 공식 × finalHpMult.\n\n" +
+             "**몹 성장률과 떼어 둔다** — 공식을 따르면 성장률을 0.02 만 올려도 카오스가 2.6배가 되어 " +
+             "잘하는 봇도 체력의 95% 를 남겼다. 잘하는 봇이 100초 안팎(제한 120초)에 잡는 양 — 빌드 측정 (기획 §51 · §54)")]
+    public float chaosHp = 55000000f;
+    [Tooltip("카오스 눈알 지름(월드). 발톱 · 고리가 그 밖으로 1.5배쯤 더 뻗는다")]
+    public float chaosDiameter = 20f;
+    [Tooltip("카오스가 떠 있는 자리 — 먼 쪽 벽 너머 하늘. 길을 걷지 않는다 (기획 §61)")]
+    public Vector3 chaosAnchor = new Vector3(0f, 1.5f, 60f);
+    [Header("카오스 부품 — VARCO")]
+    public Texture2D chaosIris;
+    public Texture2D chaosSclera;
+    public GameObject chaosTalon;
+    [Tooltip("눈 둘레를 공전하는 바위 파편")]
+    public GameObject chaosDebris;
+    [Tooltip("카오스 등장 연출(ChaosIntro)을 켠다")]
+    public bool chaosIntro = true;
+
+    [Header("끝")]
+    [Tooltip("끝나는 순간 이 배속으로 늦췄다가, endFreezeDelay 뒤에 멈춘다")]
+    public float endSlowMo = 0.3f;
+    public float endFreezeDelay = 2.2f;
 
     enum Phase { Prep, Round, Over }
 
@@ -69,11 +122,33 @@ public class GameLoop : MonoBehaviour
     float spawnTimer;
     int remainingToSpawn;
     string overReason = "";
+    bool won;
+    Monster chaos;
+    float overAt = -1f;
+    float endPlayTime;
+    float chaosFightFrom = -1f, chaosFightTime = -1f;
+    int kills;
 
     public int AliveCount => alive.Count;
+    /// <summary>필드의 몹 (체력바 · 봇이 읽는다 — 고치지 말 것)</summary>
+    public IReadOnlyList<Monster> Alive => alive;
+    /// <summary>살아 있는 보스 — 위쪽 띠 보스 게이지</summary>
+    public IReadOnlyList<Monster> Bosses => bosses;
     public bool IsOver => phase == Phase.Over;
     public bool InPrep => phase == Phase.Prep;
     public float PhaseTimeLeft => timer;
+    public bool Won => won;
+    public string OverReason => overReason;
+    public bool IsFinalRound => round >= finalRound;
+    public Monster Chaos => chaos;
+    public int Kills => kills;
+    /// <summary>카오스를 쓰러뜨리는 데 걸린 시간(게임 초, 등장 연출 뺀 것). 못 쓰러뜨렸으면 -1</summary>
+    public float ChaosFightTime => chaosFightTime;
+    /// <summary>판을 시작한 뒤 흐른 게임 시간(초). 끝났으면 끝난 순간에서 멈춘다</summary>
+    public float PlayTime => overAt >= 0f ? endPlayTime : Time.timeSinceLevelLoad;
+
+    /// <summary>판이 끝났다. true 면 승리. 결과 화면이 이걸 듣는다</summary>
+    public event System.Action<bool> Ended;
 
     /// <summary>라운드가 시작될 때 라운드 번호를 넘긴다. 제단이 빛을 솟구치는 신호.</summary>
     public event System.Action<int> RoundStarted;
@@ -83,11 +158,19 @@ public class GameLoop : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        // 난이도가 체력 곡선 · 카오스 체력을 정한다 — 씬 값은 보통의 값과 같게 두지만, 실제로는 이게 덮는다.
+        // 배치 테스트는 이 뒤에 제 값을 넣는다 (BatchTester · SmokeTest)
+        if (applyDifficulty) GenesisDifficulty.Apply(this);
+        Difficulty = GenesisDifficulty.Selected;
     }
 
     void Start()
     {
         if (route == null) route = FindFirstObjectByType<PathRoute>();
+        // 피해 기록은 static 이라 다시 하기(씬 다시 읽기)에도 남는다 — 판마다 비운다 (결과 창 피해 순위)
+        Monster.DamageLog.Clear();
+        // 스킬 연출 수명(FxLife)은 처음 도는 프레임에 코드 번역(JIT)이 50ms 걸려 첫 스킬 때 화면이 끊겼다 — 판 시작에 한 번 돌려 둔다
+        new GameObject("FxWarm").AddComponent<FxLife>().kind = FxLife.Kind.LightOnly;
         EnterPrep();
     }
 
@@ -99,9 +182,10 @@ public class GameLoop : MonoBehaviour
 
     void Update()
     {
-        HandleSpeedKeys();
+        if (phase == Phase.Over) { FreezeAfterEnd(); return; }
+        if (GenesisHud.Paused) return;   // 멈춘 동안엔 배속 · Space 건너뛰기도 안 먹는다
 
-        if (phase == Phase.Over) return;
+        HandleSpeedKeys();
 
         timer -= Time.deltaTime;
 
@@ -113,7 +197,16 @@ public class GameLoop : MonoBehaviour
         }
 
         SpawnTick();
+        DangerTick();
         CheckBossDeadline();
+        if (phase == Phase.Over) return;
+
+        // 최종 라운드는 넘어가지 않는다 — 카오스를 잡으면 승리(OnMonsterDied), 시간이 다 되면 패배
+        if (IsFinalRound)
+        {
+            if (timer <= 0f) GameOver("제한 시간 안에 카오스를 막지 못했습니다");
+            return;
+        }
 
         if (timer <= 0f && remainingToSpawn <= 0)
         {
@@ -137,7 +230,13 @@ public class GameLoop : MonoBehaviour
         phase = Phase.Round;
         timer = roundTime;
 
-        if (IsBossRound(round))
+        if (IsFinalRound)
+        {
+            remainingToSpawn = 0;
+            timer = finalTimeLimit;
+            SpawnChaos();
+        }
+        else if (IsBossRound(round))
         {
             // 보스 라운드에는 보스만 나온다 — 순수 화력 시험
             remainingToSpawn = 0;
@@ -150,6 +249,21 @@ public class GameLoop : MonoBehaviour
         }
 
         if (RoundStarted != null) RoundStarted(round);
+    }
+
+    /// <summary>
+    /// 필드가 차오르면 경고음 — 한도의 70% · 90% 를 넘는 순간 한 번씩. 내려가면 다시 울릴 수 있게 칸을 낮춘다
+    /// (몇 마리 차이로 오르내리며 계속 울리지 않게 한도의 5% 아래로 내려가야 낮춘다)
+    /// </summary>
+    void DangerTick()
+    {
+        if (dangerAt == null || fieldLimit <= 0) return;
+        float r = alive.Count / (float)fieldLimit;
+        int lv = 0;
+        for (int i = 0; i < dangerAt.Length; i++) if (r >= dangerAt[i]) lv = i + 1;
+        if (lv > dangerLevel) GenesisAudio.Play(GenesisAudio.Cue.Danger);
+        if (lv > dangerLevel) dangerLevel = lv;
+        else if (dangerLevel > 0 && r < dangerAt[dangerLevel - 1] - 0.05f) dangerLevel--;
     }
 
     void SpawnTick()
@@ -177,10 +291,13 @@ public class GameLoop : MonoBehaviour
         MonsterArt.Attach(go.transform, round, false, go.transform.localScale.y);
 
         Monster m = go.AddComponent<Monster>();
+        m.lane = Random.Range(-laneSpread, laneSpread);   // 보스 · 카오스는 가운데 줄(0)
         m.Init(route, MonsterHp(round), monsterSpeed);
+        m.Emerge(emergeTime, monsterSize * 1.15f);   // 균열 아래에서 솟아오른다
+        SpawnRift.Emerge(go.transform.position, false);
         alive.Add(m);
 
-        if (alive.Count > fieldLimit) GameOver("필드 한계");
+        if (alive.Count > fieldLimit) GameOver($"몬스터가 필드를 메웠습니다 ({fieldLimit}마리 초과)");
     }
 
     // ── 보스 ──────────────────────────────────
@@ -202,13 +319,63 @@ public class GameLoop : MonoBehaviour
         Monster m = go.AddComponent<Monster>();
         m.isBoss = true;
         m.bossRound = round;
+        m.displayName = MonsterArt.LabelFor(round, true);
         m.Init(route, BossHp(round), monsterSpeed * bossSpeedMult);
+        m.Emerge(emergeTime * 2.2f, bossSize * 1.15f);   // 보스는 천천히, 크게
+        SpawnRift.Emerge(go.transform.position, true);
+        GenesisAudio.Play(GenesisAudio.Cue.BossEmerge);
 
         alive.Add(m);
         bosses.Add(m);
 
         Debug.Log($"[보스] {round}라운드 등장   체력 {BossHp(round):N0}   " +
                   $"{bossGraceRounds}라운드 안에 잡아야 함");
+    }
+
+    /// <summary>
+    /// 최종 보스 카오스 — 먼 쪽 벽 너머 하늘에 떠 있는 **거대한 눈**. 길을 걷지 않고(anchored)
+    /// 모든 유닛이 사거리와 상관없이 친다(`Everywhere`). `ChaosBoss` 가 눈알 · 발톱 · 고리를 조립한다
+    /// </summary>
+    void SpawnChaos()
+    {
+        GameObject go = new GameObject("Chaos");
+
+        GameObject body = new GameObject("ChaosBody");
+        body.transform.SetParent(go.transform, false);
+        ChaosBoss cb = body.AddComponent<ChaosBoss>();
+        cb.irisTex = chaosIris;
+        cb.scleraTex = chaosSclera;
+        cb.talon = chaosTalon;
+        cb.debris = chaosDebris;
+        cb.diameter = chaosDiameter;
+
+        Monster m = go.AddComponent<Monster>();
+        m.isBoss = true;
+        m.bossRound = round;
+        m.displayName = "카오스";
+        m.Init(route, ChaosHp, 0f);
+        m.anchored = true;
+        m.hitRadius = chaosDiameter * 0.5f;
+        go.transform.position = chaosAnchor;   // Init 이 길 출발점으로 옮겨 둔 것을 되돌린다
+
+        alive.Add(m);
+        bosses.Add(m);
+        chaos = m;
+        chaosFightFrom = Time.time;
+
+        // 등장 연출 — 벽 아래에서 떠오름 · 드드드 흔들림 · 눈뜨기. 그동안은 제한 시간을 깎지 않고 아무도 못 친다
+        if (chaosIntro)
+        {
+            ChaosIntro intro = go.AddComponent<ChaosIntro>();
+            intro.color = cb.glowColor;
+            intro.subtitle = $"혼돈이 눈을 뜹니다 — {finalTimeLimit:0}초 안에 쓰러뜨리세요";
+            intro.Begin();
+            timer += intro.hold;
+            chaosFightFrom += intro.hold;
+        }
+        else chaosAwake = true;
+
+        Debug.Log($"[최종] 카오스 등장   체력 {ChaosHp:N0}   제한 {finalTimeLimit:0}초");
     }
 
     void CheckBossDeadline()
@@ -220,7 +387,7 @@ public class GameLoop : MonoBehaviour
 
             if (round > b.bossRound + bossGraceRounds)
             {
-                GameOver($"보스 방치 (R{b.bossRound})");
+                GameOver($"{b.bossRound}라운드 보스를 {bossGraceRounds}라운드 안에 잡지 못했습니다 (남은 체력 {b.HpRatio * 100f:0}%)");
                 return;
             }
         }
@@ -235,12 +402,20 @@ public class GameLoop : MonoBehaviour
             count = Mathf.Max(1, bossRound / bossInterval);
 
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        sb.Append($"[보스] R{bossRound} 격파 → ");
+        sb.Append($"[보스] R{bossRound} 격파 ({round}라운드 · 남은 시간 {timer:0}초) → ");
 
         for (int i = 0; i < count; i++)
         {
             int tier = RollBossTier(bossRound);
             UnitType type = UnitTable.RandomOfTier(tier);
+
+            // 인구수가 차 있으면 창고로 — 보상은 버리지 않는다
+            if (SoulShop.Instance.AtCap && Warehouse.Instance != null)
+            {
+                Warehouse.Instance.Add(type, 1);
+                sb.Append($"{tier}단계 {UnitTable.Get(type).name}(창고)  ");
+                continue;
+            }
             Unit u = SoulShop.Instance.SpawnUnit(type);
 
             sb.Append(u != null ? $"{tier}단계 {UnitTable.Get(type).name}  " : "(자리 없음)  ");
@@ -260,7 +435,13 @@ public class GameLoop : MonoBehaviour
         return roll < 0.15f ? 2 : roll < 0.70f ? 3 : 4;
     }
 
-    public float BossHp(int r) => SpawnCount(r) * MonsterHp(r) * bossHpMult;
+    public float BossHp(int r)
+    {
+        int k = bossInterval > 0 ? r / bossInterval - 1 : -1;
+        float scale = bossHpScale != null && k >= 0 && k < bossHpScale.Length ? bossHpScale[k] : 1f;
+        return SpawnCount(r) * MonsterHp(r) * bossHpMult * scale;
+    }
+    public float ChaosHp => chaosHp > 0f ? chaosHp : BossHp(finalRound) * finalHpMult;
 
     // ── 몬스터 조회 ───────────────────────────
 
@@ -276,6 +457,16 @@ public class GameLoop : MonoBehaviour
         // 돈은 잡아야 나온다 — 영혼(고정)과 달리 성과 보상이다
         if (GoldBank.Instance != null)
             GoldBank.Instance.Add(GoldForKill(boss));
+
+        kills++;
+        if (m != chaos) GenesisAudio.Play(boss ? GenesisAudio.Cue.BossDown : GenesisAudio.Cue.Kill);
+
+        if (m != null && m == chaos)
+        {
+            bosses.Remove(m);
+            Victory();
+            return;
+        }
 
         if (boss)
         {
@@ -296,6 +487,15 @@ public class GameLoop : MonoBehaviour
     /// 사거리 안 표적을 찾는다. **보스가 사거리 안에 있으면 보스를 우선한다.**
     /// 안 그러면 유예 라운드에 잡몬이 모든 화력을 빨아들여 보스가 그냥 방치된다.
     /// </summary>
+    /// <summary>
+    /// 이 몹은 거리와 상관없이 모든 사거리 · 범위 안이다 — 벽 너머 하늘에 떠 있는 카오스.
+    /// 길에서 멀어 아무 유닛도 닿지 않으므로, 최종전은 **필드 전체가 한 점을 친다**
+    /// </summary>
+    public bool Everywhere(Monster m) => m != null && m.anchored && m == chaos && chaosAwake && !m.IsDying;
+
+    /// <summary>등장 연출이 끝나 싸움이 시작됐다 — 그 전(떠오르는 동안)엔 아무도 못 친다. ChaosIntro 가 켠다</summary>
+    [System.NonSerialized] public bool chaosAwake;
+
     public Monster FindNearest(Vector3 from, float range)
     {
         float rangeSqr = range * range;
@@ -311,7 +511,11 @@ public class GameLoop : MonoBehaviour
             Monster m = alive[i];
             if (m == null) continue;
 
-            float sqr = (m.transform.position - from).sqrMagnitude;
+            // 바닥 위 거리 — Unit.InRange 와 같은 기준이어야 찾자마자 놓치지 않는다
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            float sqr = d.sqrMagnitude;
+            if (Everywhere(m)) sqr = 0f;   // 벽 너머의 카오스 — 어디서든 닿는다
             if (sqr > rangeSqr) continue;
 
             if (m.isBoss)
@@ -326,6 +530,70 @@ public class GameLoop : MonoBehaviour
         }
 
         return bestBoss != null ? bestBoss : best;
+    }
+
+    /// <summary>
+    /// 바닥 거리 반경 안의 산 몬스터를 `into` 에 모은다 (비우고 채운다). 스킬이 쓴다 —
+    /// 피해를 주는 동안 명단이 바뀌므로(죽으면 빠진다) 먼저 모으고 나서 때린다
+    /// </summary>
+    public void Gather(Vector3 center, float radius, List<Monster> into)
+    {
+        into.Clear();
+        float sqr = radius * radius;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - center;
+            d.y = 0f;
+            if (d.sqrMagnitude <= sqr || Everywhere(m)) into.Add(m);
+        }
+    }
+
+    /// <summary>필드의 산 몬스터 전부 — 환웅 스킬처럼 필드 전체를 치는 것용</summary>
+    public void GatherAll(List<Monster> into)
+    {
+        into.Clear();
+        for (int i = 0; i < alive.Count; i++)
+            if (alive[i] != null && !alive[i].IsDying) into.Add(alive[i]);
+    }
+
+    /// <summary>사거리 안에서 남은 체력이 가장 많은 몬스터 — 오딘 궁니르가 노린다</summary>
+    public Monster FindToughest(Vector3 from, float range)
+    {
+        float sqr = range * range;
+        Monster best = null;
+        float bestHp = -1f;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            if (d.sqrMagnitude > sqr && !Everywhere(m)) continue;
+            if (m.Hp > bestHp) { bestHp = m.Hp; best = m; }
+        }
+        return best;
+    }
+
+    /// <summary>사거리 안에서 가장 먼 적 — 주몽의 백발백중. 평타(가까운 적)와 반대쪽을 맡는다</summary>
+    public Monster FindFarthest(Vector3 from, float range)
+    {
+        float sqr = range * range;
+        Monster best = null;
+        float bestSqr = -1f;
+        for (int i = 0; i < alive.Count; i++)
+        {
+            Monster m = alive[i];
+            if (m == null || m.IsDying) continue;
+            Vector3 d = m.transform.position - from;
+            d.y = 0f;
+            float s = d.sqrMagnitude;
+            if (Everywhere(m)) s = Mathf.Min(sqr, s);   // 멀리 떠 있어도 사거리 끝에 있는 셈
+            if (s > sqr || s <= bestSqr) continue;
+            bestSqr = s; best = m;
+        }
+        return best;
     }
 
     /// <summary>범위 피해 — 그리스 ★ 시너지용. 중심 대상은 제외한다.</summary>
@@ -347,10 +615,63 @@ public class GameLoop : MonoBehaviour
 
     // ── 종료 ──────────────────────────────────
 
-    void GameOver(string reason)
+    void Victory()
+    {
+        if (phase == Phase.Over) return;
+        if (chaosFightFrom >= 0f) chaosFightTime = Mathf.Max(0f, Time.time - chaosFightFrom);
+        End(true, "카오스 격파");
+        Debug.Log($"[결과] 승리 — {round}라운드 카오스 격파   {PlayTime:0}초   처치 {kills}");
+    }
+
+    /// <summary>승패 공통 — 멈추고 결과 화면에 알린다</summary>
+    void End(bool victory, string reason)
     {
         phase = Phase.Over;
+        won = victory;
         overReason = reason;
+        endPlayTime = Time.timeSinceLevelLoad;
+        overAt = Time.unscaledTime;
+        // 바로 멈추면 마지막 한 방(카오스가 부서지는 것, 필드가 넘치는 것)이 안 보인다.
+        // 느리게 흘리다가 FreezeAfterEnd 가 세운다
+        Time.timeScale = endSlowMo;
+        if (Ended != null) Ended(victory);
+    }
+
+    void FreezeAfterEnd()
+    {
+        if (overAt >= 0f && Time.timeScale > 0f && Time.unscaledTime - overAt >= endFreezeDelay)
+            Time.timeScale = 0f;
+    }
+
+    /// <summary>같은 씬을 처음부터. 배속과 정지를 먼저 풀어야 새 판이 멈춘 채로 시작하지 않는다</summary>
+    public void Restart()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    /// <summary>타이틀 화면으로. 타이틀 씬이 빌드에 없으면(예전 씬 구성) 그냥 끈다</summary>
+    public void ToTitle()
+    {
+        Time.timeScale = 1f;
+        if (Application.CanStreamedLevelBeLoaded("Title")) SceneManager.LoadScene("Title");
+        else Quit();
+    }
+
+    public void Quit()
+    {
+        Time.timeScale = 1f;
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    void GameOver(string reason)
+    {
+        if (phase == Phase.Over) return;
+        End(false, reason);
 
         string souls = SoulBank.Instance != null ? $"영혼 총{SoulBank.Instance.TotalEarned}" : "-";
         string mats = MaterialShop.Instance != null ? $"재료 {MaterialShop.Instance.TotalPulled}개" : "-";
@@ -380,17 +701,25 @@ public class GameLoop : MonoBehaviour
         Keyboard k = Keyboard.current;
         if (k == null) return;
 
+        if (k.f12Key.wasPressedThisFrame) ShowDebug = !ShowDebug;   // F1~F4 는 카메라 이동(CameraRig)
+
         if (k.digit1Key.wasPressedThisFrame) Time.timeScale = 1f;
         else if (k.digit2Key.wasPressedThisFrame) Time.timeScale = 2f;
-        else if (k.digit3Key.wasPressedThisFrame) Time.timeScale = 4f;
-        else if (k.digit4Key.wasPressedThisFrame) Time.timeScale = 8f;
+        else if (k.digit3Key.wasPressedThisFrame) Time.timeScale = 3f;
+        // 8배는 밸런스 확인용 — 통계창(F12)을 켰을 때만
+        else if (ShowDebug && k.digit4Key.wasPressedThisFrame) Time.timeScale = 8f;
     }
 
     /// <summary>개발용 통계를 그릴 높이. HUD 위쪽 띠가 있으면 그 밑으로 내린다</summary>
     public static float DebugTop = 12f;
 
+    /// <summary>개발용 통계창. 플레이어에게는 안 보이게 꺼 두고 F12 로 켠다</summary>
+    public static bool ShowDebug;
+
     void OnGUI()
     {
+        if (!ShowDebug) return;
+
         GUI.skin.label.fontSize = 17;
         GUILayout.BeginArea(new Rect(12, DebugTop, 480, 340));
 
@@ -413,7 +742,7 @@ public class GameLoop : MonoBehaviour
 
         GUILayout.Space(6);
 
-        // 영혼·돈·재료는 우측 상단 ResourceHud가 맡는다
+        // 영혼·돈·재료는 HUD 위 띠가 맡는다
 
         if (ResearchLab.Instance != null)
             GUILayout.Label($"연구    {ResearchLab.Instance.Summary()}");

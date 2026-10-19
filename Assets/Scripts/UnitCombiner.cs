@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 조합.
@@ -27,10 +26,6 @@ public class UnitCombiner : MonoBehaviour
 
     void Update()
     {
-        // E — 가능한 조합 하나 실행
-        if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-            CombineOnce();
-
         if (autoCombine)
         {
             int guard = 0;
@@ -50,7 +45,7 @@ public class UnitCombiner : MonoBehaviour
         return false;
     }
 
-    bool TryTier4()
+    public bool TryTier4()
     {
         foreach (Culture c in MaterialTable.All)
         {
@@ -63,14 +58,14 @@ public class UnitCombiner : MonoBehaviour
             SoulShop.Instance.Consume(found[1]);
             SoulShop.Instance.SpawnUnit(UnitTable.Tier4Of(c), at);
 
-            TotalCombined++;
+            Done(UnitTable.Tier4Of(c), at);
             return true;
         }
 
         return false;
     }
 
-    bool TryTier3()
+    public bool TryTier3()
     {
         foreach (Culture c in MaterialTable.All)
         {
@@ -88,7 +83,7 @@ public class UnitCombiner : MonoBehaviour
             SoulShop.Instance.Consume(d);
             SoulShop.Instance.SpawnUnit(UnitTable.Tier3Of(c), at);
 
-            TotalCombined++;
+            Done(UnitTable.Tier3Of(c), at);
             return true;
         }
 
@@ -127,7 +122,7 @@ public class UnitCombiner : MonoBehaviour
         SoulShop.Instance.Consume(b);
         SoulShop.Instance.SpawnUnit(result, at);
 
-        TotalCombined++;
+        Done(result, at);
         return true;
     }
 
@@ -174,16 +169,31 @@ public class UnitCombiner : MonoBehaviour
     /// <summary>이 유닛으로 만들 수 있는 상위 단계 목록.</summary>
     public List<Option> OptionsFor(Unit u)
     {
-        List<Option> list = new List<Option>();
-        if (u == null || SoulShop.Instance == null) return list;
+        if (u == null) return new List<Option>();
+        return OptionsFor(u.type);
+    }
 
-        if (u.Tier == 1)
+    /// <summary>
+    /// 이 종류로 만들 수 있는 상위 단계 목록. 필드에 한 마리도 없어도 된다 —
+    /// 창고 콘솔에서 창고에 든 유닛을 바로 조합할 때 쓴다
+    /// </summary>
+    public List<Option> OptionsFor(UnitType type)
+    {
+        List<Option> list = new List<Option>();
+        if (SoulShop.Instance == null) return list;
+
+        UnitTable.Stats us = UnitTable.Get(type);
+        if (us.hidden) return list;   // 히든은 막다른 유닛 — 더 올라갈 데가 없다
+        int tier = us.tier;
+        Culture culture = us.culture;
+
+        if (tier == 1)
         {
-            int same = CountOf(u.type);
+            int same = CountOf(type);
 
             foreach (Culture c in MaterialTable.All)
             {
-                if (!UnitTable.TryCombine(u.type, c, out UnitType res)) continue;
+                if (!UnitTable.TryCombine(type, c, out UnitType res)) continue;
 
                 int mat = MaterialBank.Instance != null ? MaterialBank.Instance.Get(c) : 0;
 
@@ -193,19 +203,19 @@ public class UnitCombiner : MonoBehaviour
                 o.tier = 2;
                 o.ready = same >= 2 && mat >= 1;
 
-                if (same < 2) o.need = $"{UnitTable.Get(u.type).name} 2개 필요 ({same}/2)";
+                if (same < 2) o.need = $"{us.name} 2개 필요 ({same}/2)";
                 else if (mat < 1) o.need = $"{MaterialTable.Name(c)} 필요";
                 else o.need = "";
 
                 list.Add(o);
             }
         }
-        else if (u.Tier == 2)
+        else if (tier == 2)
         {
-            UnitType[] trio = UnitTable.Tier2Of(u.Culture);
+            UnitType[] trio = UnitTable.Tier2Of(culture);
 
             Option o = new Option();
-            o.result = UnitTable.Tier3Of(u.Culture);
+            o.result = UnitTable.Tier3Of(culture);
             o.tier = 3;
 
             string missing = "";
@@ -222,15 +232,15 @@ public class UnitCombiner : MonoBehaviour
             o.need = ok ? "" : missing.Trim() + " 필요";
             list.Add(o);
         }
-        else if (u.Tier == 3)
+        else if (tier == 3)
         {
-            int same = CountOf(u.type);
+            int same = CountOf(type);
 
             Option o = new Option();
-            o.result = UnitTable.Tier4Of(u.Culture);
+            o.result = UnitTable.Tier4Of(culture);
             o.tier = 4;
             o.ready = same >= 2;
-            o.need = same >= 2 ? "" : $"{UnitTable.Get(u.type).name} 2개 필요 ({same}/2)";
+            o.need = same >= 2 ? "" : $"{us.name} 2개 필요 ({same}/2)";
             list.Add(o);
         }
 
@@ -238,40 +248,145 @@ public class UnitCombiner : MonoBehaviour
     }
 
     /// <summary>고른 조합을 실행한다. 결과는 이 유닛 자리에 나온다.</summary>
-    /// <summary>고른 조합을 실행한다. 결과는 이 유닛 자리에 나온다.</summary>
     public bool Execute(Unit u, Option o)
     {
         if (u == null || !o.ready) return false;
 
         Vector3 at = u.transform.position;
+        if (!SpendRest(u.type, o, u)) return false;
 
-        if (o.tier == 2)
-        {
-            if (MaterialBank.Instance == null || !MaterialBank.Instance.TrySpend(o.material, 1)) return false;
-            if (!SpendOne(u.type, u)) return false;
-
-            SoulShop.Instance.Consume(u);
-        }
-        else if (o.tier == 3)
-        {
-            UnitType[] trio = UnitTable.Tier2Of(u.Culture);
-
-            foreach (UnitType t in trio)
-                if (!SpendOne(t, null)) return false;
-        }
-        else
-        {
-            if (!SpendOne(u.type, u)) return false;
-            SoulShop.Instance.Consume(u);
-        }
-
+        SoulShop.Instance.Consume(u);
         SoulShop.Instance.SpawnUnit(o.result, at);
-        TotalCombined++;
+        Done(o.result, at);
         return true;
     }
 
+    /// <summary>
+    /// 히든 조합 — 서로 다른 1단계 둘 + 재료. 결과는 a 자리에 나오고, 처음이면 이름이 풀린다
+    /// </summary>
+    public bool CombineHidden(Unit a, Unit b, Culture material)
+    {
+        if (a == null || b == null || a == b) return false;
+        UnitTable.Hidden h;
+        if (!UnitTable.TryHidden(a.type, b.type, material, out h)) return false;
+        if (MaterialBank.Instance == null || !MaterialBank.Instance.TrySpend(h.material, 1)) return false;
+
+        Vector3 at = a.transform.position;
+        SoulShop.Instance.Consume(a);
+        SoulShop.Instance.Consume(b);
+        SoulShop.Instance.SpawnUnit(h.result, at);
+
+        bool first = !UnitTable.Discovered(h.result);
+        UnitTable.Discover(h.result);
+        if (HiddenFound != null) HiddenFound(h.result, first);
+
+        Done(h.result, at);
+        return true;
+    }
+
+    /// <summary>히든을 만들었다. 두 번째 값은 처음 찾았는지 — 알림 띠가 듣는다</summary>
+    public static event System.Action<UnitType, bool> HiddenFound;
+
+    /// <summary>
+    /// 창고에 든 유닛을 기준으로 조합한다 — 꺼내지 않고 창고 콘솔에서 바로 한다.
+    /// 결과는 `at` 자리(전투 블록)에 나온다
+    /// </summary>
+    public bool ExecuteStored(UnitType type, Option o, Vector3? at)
+    {
+        if (!o.ready || Warehouse.Instance == null || Warehouse.Instance.Get(type) < 1) return false;
+        if (!SpendRest(type, o, null)) return false;
+        if (!Warehouse.Instance.Remove(type, 1)) return false;
+
+        // 필드가 가득이면 결과도 창고로 — 창고 것끼리 조합해서 인구수를 넘기는 길을 막는다
+        if (SoulShop.Instance.AtCap)
+        {
+            Warehouse.Instance.Add(o.result, 1);
+            Done(o.result, at ?? Vector3.zero);
+            return true;
+        }
+        Unit made = SoulShop.Instance.SpawnUnit(o.result, at);
+        Done(o.result, made != null ? made.transform.position : (at ?? Vector3.zero));
+        return true;
+    }
+
+    /// <summary>
+    /// 기준 유닛 한 마리를 뺀 나머지 재료를 쓴다. 기준 유닛은 부르는 쪽이 치운다.
+    /// 모자라면 아무것도 쓰지 않고 false — 반쯤 먹고 실패하면 유닛이 증발한다
+    /// </summary>
+    bool SpendRest(UnitType type, Option o, Unit except)
+    {
+        // 기준이 창고에 있으면 창고 한 자리는 기준 몫이라 짝으로 쓰면 안 된다
+        int keep = except == null ? 1 : 0;
+
+        if (o.tier == 2)
+        {
+            if (MaterialBank.Instance == null || MaterialBank.Instance.Get(o.material) < 1) return false;
+            if (CountOf(type) < 2) return false;
+
+            MaterialBank.Instance.TrySpend(o.material, 1);
+            return SpendOne(type, except, keep);
+        }
+
+        if (o.tier == 3)
+        {
+            UnitType[] trio = UnitTable.Tier2Of(UnitTable.Get(type).culture);
+            foreach (UnitType t in trio)
+                if (t != type && CountOf(t) < 1) return false;
+
+            foreach (UnitType t in trio)
+                if (t != type && !SpendOne(t, except, 0)) return false;
+            return true;
+        }
+
+        if (CountOf(type) < 2) return false;
+        return SpendOne(type, except, keep);
+    }
+
+    /// <summary>
+    /// 조합이 끝났다. 조합표·필드 연출은 이 신호를 받아 번쩍인다 — 조합 경로가 넷(자동 3단 + 클릭)이라
+    /// 연출을 각자 부르면 하나쯤 빠진다.
+    /// </summary>
+    void Done(UnitType result, Vector3 at)
+    {
+        TotalCombined++;
+        if (Combined != null) Combined(result, at);
+    }
+
+    /// <summary>조합 결과와 나온 자리.</summary>
+    public static event System.Action<UnitType, Vector3> Combined;
+
+    /// <summary>
+    /// 이 유닛을 **지금** 만들 수 있는가. 조합표가 칸에 불을 켤 때 쓴다.
+    /// `OptionsFor` 와 같은 기준이다 — 창고에 든 유닛도 재료로 센다.
+    /// </summary>
+    public bool CanMake(UnitType result)
+    {
+        if (SoulShop.Instance == null) return false;
+        UnitTable.Stats s = UnitTable.Get(result);
+        Culture c = s.culture;
+
+        if (s.tier == 2)
+        {
+            if (MaterialBank.Instance == null || MaterialBank.Instance.Get(c) < 1) return false;
+            foreach (UnitType b in UnitTable.OfTier(1))
+            {
+                UnitType r;
+                if (UnitTable.TryCombine(b, c, out r) && r == result) return CountOf(b) >= 2;
+            }
+            return false;
+        }
+        if (s.tier == 3)
+        {
+            foreach (UnitType t in UnitTable.Tier2Of(c))
+                if (CountOf(t) < 1) return false;
+            return true;
+        }
+        if (s.tier == 4) return CountOf(UnitTable.Tier3Of(c)) >= 2;
+        return false;
+    }
+
     /// <summary>필드 + 창고. 창고에 있어도 재료로는 쓰인다.</summary>
-    int CountOf(UnitType t)
+    public int CountOf(UnitType t)
     {
         int n = 0;
         foreach (Unit x in SoulShop.Instance.Units)
@@ -281,9 +396,16 @@ public class UnitCombiner : MonoBehaviour
         return n;
     }
 
-    /// <summary>재료 하나를 쓴다. 필드에서 먼저 찾고 없으면 창고에서 가져온다.</summary>
-    bool SpendOne(UnitType t, Unit except)
+    /// <summary>
+    /// 재료 하나를 쓴다. **창고에서 먼저** 가져오고 없으면 필드에서 뺀다 — 창고는
+    /// "지금 안 쓸 재료를 치워두는" 곳이라, 싸우는 유닛을 두고 창고분을 남기면 거꾸로다.
+    /// `keep` 은 창고에서 건드리면 안 되는 수(창고에 든 기준 유닛 몫)
+    /// </summary>
+    bool SpendOne(UnitType t, Unit except, int keep)
     {
+        if (Warehouse.Instance != null && Warehouse.Instance.Get(t) > keep)
+            return Warehouse.Instance.Remove(t, 1);
+
         foreach (Unit x in SoulShop.Instance.Units)
         {
             if (x == null || x == except || x.type != t) continue;
@@ -292,13 +414,6 @@ public class UnitCombiner : MonoBehaviour
             return true;
         }
 
-        return Warehouse.Instance != null && Warehouse.Instance.Remove(t, 1);
-    }
-
-    Unit FindOther(UnitType t, Unit except)
-    {
-        foreach (Unit x in SoulShop.Instance.Units)
-            if (x != null && x != except && x.type == t) return x;
-        return null;
+        return false;
     }
 }

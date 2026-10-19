@@ -10,7 +10,29 @@ public class Monster : MonoBehaviour
     public float maxHp = 100f;
 
     [HideInInspector] public bool isBoss;
+
+    [Tooltip("길 가운데선에서 비킨 거리(+ 바깥 · - 안쪽). 길이 넓어 몹이 여러 줄로 걷는다. Init 전에 넣는다")]
+    public float lane;
     [HideInInspector] public int bossRound;
+    /// <summary>몹 이름 (MonsterArt 의 label) — 보스 체력바 위에 쓴다</summary>
+    [HideInInspector] public string displayName = "";
+
+    /// <summary>
+    /// 길을 걷지 않고 제자리에 떠 있다 — 카오스(벽 너머 하늘의 눈). 밀치기 · 혼란도 안 먹는다.
+    /// 사거리 밖이라 `GameLoop.Everywhere` 가 모든 유닛 · 스킬의 사거리 안으로 쳐 준다
+    /// </summary>
+    [HideInInspector] public bool anchored;
+    /// <summary>몸 반지름. 0 보다 크면 발사체가 중심이 아니라 **겉면**에서 터진다 (거대한 눈 속으로 파고들지 않게)</summary>
+    [HideInInspector] public float hitRadius;
+
+    /// <summary>`from` 쪽에서 봤을 때 몸 겉면의 점. hitRadius 가 0 이면 중심</summary>
+    public Vector3 SurfacePoint(Vector3 from)
+    {
+        Vector3 c = transform.position;
+        if (hitRadius <= 0f) return c;
+        Vector3 d = from - c;
+        return d.sqrMagnitude < 0.0001f ? c : c + d.normalized * hitRadius;
+    }
 
     // 감속 (사제 계열)
     float slowMult = 1f;
@@ -47,6 +69,14 @@ public class Monster : MonoBehaviour
     float hp;
 
     public float HpRatio => maxHp > 0f ? hp / maxHp : 0f;
+    public float Hp => hp;
+
+    // 기절 (티탄 스킬) — 그 자리에 선다
+    float stunUntil;
+    public bool IsStunned => Time.time < stunUntil;
+
+    [Tooltip("보스는 기절이 이 비율로 짧다 — 보스를 묶어 두고 때리는 게 정답이 되면 보스 라운드가 죽는다")]
+    public float bossStunMult = 0.3f;
 
     /// <summary>애니메이터 통로. 없으면 `anim` 이 null 이고 전부 건너뛴다.</summary>
     ActorAnimator anim;
@@ -58,6 +88,7 @@ public class Monster : MonoBehaviour
 
     /// <summary>죽는 중. 명단에서는 이미 빠졌고 화면에만 남아 있다.</summary>
     bool dying;
+    public bool IsDying => dying;
 
     void Awake()
     {
@@ -130,7 +161,7 @@ public class Monster : MonoBehaviour
 
         // 0번은 스폰 지점이므로 1번을 향해 출발한다
         targetIndex = 1;
-        Vector3 start = route.GetPoint(0);
+        Vector3 start = route.GetPoint(0, lane);
         transform.position = new Vector3(start.x, transform.position.y, start.z);
     }
 
@@ -138,6 +169,7 @@ public class Monster : MonoBehaviour
     {
         // 시체는 걷지 않는다. 죽는 동작이 끝날 때까지 남아 있을 뿐이다
         if (dying) return;
+        if (anchored) return;   // 카오스 — 움직임은 ChaosBoss 가 맡는다
         if (route == null || route.Count == 0) return;
 
         // 감속 만료
@@ -154,7 +186,26 @@ public class Monster : MonoBehaviour
             targetIndex = (targetIndex + 1) % route.Count;
         }
 
-        Vector3 target = route.GetPoint(targetIndex);
+        if (emergeT >= 0f)
+        {
+            emergeT += Time.deltaTime;
+            float k = Mathf.Clamp01(emergeT / emergeDur);
+            k = 1f - (1f - k) * (1f - k);   // 빠르게 솟았다가 끝에서 느려진다
+            Vector3 p = transform.position;
+            p.y = emergeY - emergeDepth * (1f - k);
+            transform.position = p;
+            if (anim != null) anim.SetSpeed(speed * 0.5f);   // 기어오르는 발걸음
+            if (emergeT < emergeDur) return;
+            emergeT = -1f;
+        }
+
+        if (IsStunned)
+        {
+            if (anim != null) anim.SetSpeed(0f);
+            return;
+        }
+
+        Vector3 target = route.GetPoint(targetIndex, lane);
         target.y = transform.position.y;
 
         transform.position = Vector3.MoveTowards(
@@ -176,6 +227,15 @@ public class Monster : MonoBehaviour
         // 이미 죽은 것을 또 때릴 수 있다 — 죽기 직전에 떠난 발사체가 뒤늦게 닿는다.
         // 막지 않으면 `Die` 가 두 번 돌아 골드와 시너지가 중복으로 들어간다
         if (dying || hp <= 0f) return;
+
+        // 밸런스 통계 — 실제로 깎은 체력만 센다 (넘친 피해는 안 친다).
+        // 오라클 표식으로 늘어난 몫은 따로 센다 — 표식이 얼마나 일하는지 봐야 한다
+        float extra = 0f;
+        if (Time.time < exposedUntil) { extra = amount * (exposedMult - 1f); amount *= exposedMult; }
+        float dealt = Mathf.Min(amount, hp);
+        float bonus = amount > 0f ? dealt * extra / amount : 0f;
+        Log(DamageSource ?? "기본 공격", dealt - bonus);
+        if (bonus > 0f) Log("약점 간파 (늘어난 몫)", bonus);
 
         hp -= amount;
 
@@ -203,10 +263,80 @@ public class Monster : MonoBehaviour
         }
     }
 
+    // 균열에서 솟아오르기 — 땅 아래에서 제 높이까지. 그동안은 걷지 않는다
+    float emergeT = -1f, emergeDur, emergeDepth, emergeY;
+
+    /// <summary>
+    /// 몹 출발점의 균열 아래에서 솟아오른다. 블록 윗면(y 0)이 불투명이라 땅 아래 몸은 안 보이고,
+    /// 틈을 뚫고 올라오는 것처럼 보인다. Init 다음에 부른다
+    /// </summary>
+    public void Emerge(float duration, float depth)
+    {
+        if (duration <= 0f) return;
+        emergeY = transform.position.y;
+        emergeDur = duration;
+        emergeDepth = depth;
+        emergeT = 0f;
+        Vector3 p = transform.position;
+        p.y = emergeY - depth;
+        transform.position = p;
+    }
+
+    /// <summary>기절. 그 자리에 선다. 보스는 짧게(bossStunMult), 더 긴 기절이 이긴다</summary>
+    public void Stun(float duration)
+    {
+        if (duration <= 0f || dying) return;
+        if (isBoss) duration *= bossStunMult;
+        stunUntil = Mathf.Max(stunUntil, Time.time + duration);
+    }
+
+    /// <summary>
+    /// 밸런스 통계 — 피해가 어디서 왔는지. 스킬이 때리기 직전에 이름을 넣고 끝나면 비운다.
+    /// 비어 있으면 "기본 공격". 판마다 BatchTester 가 비운다
+    /// </summary>
+    public static string DamageSource;
+    public static readonly System.Collections.Generic.Dictionary<string, float> DamageLog =
+        new System.Collections.Generic.Dictionary<string, float>();
+
+    static void Log(string src, float v)
+    {
+        if (v <= 0f) return;
+        float sum;
+        DamageLog.TryGetValue(src, out sum);
+        DamageLog[src] = sum + v;
+    }
+
+    // 약점 표식 (오라클 스킬) — 받는 피해가 늘어난다
+    float exposedMult = 1f, exposedUntil;
+    public bool IsExposed => Time.time < exposedUntil;
+
+    /// <summary>받는 피해를 mult 배로. 더 센 표식이 이기고, 같으면 시간만 늘린다</summary>
+    public void Expose(float mult, float duration)
+    {
+        if (dying || duration <= 0f) return;
+        if (!IsExposed || mult >= exposedMult) exposedMult = mult;
+        exposedUntil = Mathf.Max(exposedUntil, Time.time + duration);
+    }
+
+    /// <summary>
+    /// 길을 따라 뒤로 밀린다 (미노타우로스 스킬). **길 밖으로 날리지 않는다** — 지나온 꺾임점까지만
+    /// 밀리므로 길 모서리를 넘어가지 않는다. 보스는 덜 밀린다
+    /// </summary>
+    public void Knockback(float distance)
+    {
+        if (dying || anchored || distance <= 0f || route == null || route.Count == 0 || emergeT >= 0f) return;
+        if (isBoss) distance *= bossStunMult;
+
+        int prev = (targetIndex - dir + route.Count) % route.Count;
+        Vector3 back = route.GetPoint(prev, lane);
+        back.y = transform.position.y;
+        transform.position = Vector3.MoveTowards(transform.position, back, distance);
+    }
+
     /// <summary>혼란. 경로를 거꾸로 가게 한다 — 사거리 안에 그만큼 오래 머문다.</summary>
     public void Confuse(float duration)
     {
-        if (duration <= 0f || route == null || route.Count == 0) return;
+        if (duration <= 0f || anchored || route == null || route.Count == 0) return;
 
         if (dir > 0)
         {
@@ -237,7 +367,8 @@ public class Monster : MonoBehaviour
         // 죽는 동작이 보이려면 바로 지우면 안 된다. 다만 **클립이 없으면
         // 기다릴 이유도 없다** — 애니메이터가 없는 채로 늦추면 시체가 멀쩡히
         // 선 채로 남아 있다가 사라진다
-        float wait = (anim != null && anim.Ready) ? deathLinger : 0f;
+        // 카오스는 눈이 떨다 꺼지고 발톱이 흩어지는 동안 남는다 (ChaosBoss.Dying)
+        float wait = anchored ? 2.6f : (anim != null && anim.Ready) ? deathLinger : 0f;
         Destroy(gameObject, wait);
     }
 }

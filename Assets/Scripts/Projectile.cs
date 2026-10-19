@@ -33,7 +33,16 @@ public float lifeTime = 3f;
         this.slowChance = slowChance;
         this.slowAmount = slowAmount;
         this.slowDuration = slowDuration;
+
+        // 카오스는 벽 너머 하늘에 있다 — 멀어서 평소 수명(3초)이면 닿기 전에 사라진다. 겉면을 노린다
+        aimFrom = transform.position;
+        if (target != null && target.hitRadius > 0f)
+            lifeTime = Mathf.Max(lifeTime, (target.SurfacePoint(aimFrom) - aimFrom).magnitude / Mathf.Max(1f, speed) + 1.5f);
     }
+
+    Vector3 aimFrom;
+    /// <summary>맞는 자리 — 보통은 몸 중심, 거대한 몸(카오스)은 쏜 쪽 겉면</summary>
+    Vector3 Impact => target.hitRadius > 0f ? target.SurfacePoint(aimFrom) : target.transform.position;
 
     public void SetSynergy(float splashRadius, float splashFraction, float critChance, float critMult, float confuseTime)
     {
@@ -66,6 +75,11 @@ public float lifeTime = 3f;
     /// <summary>근접·번개 — 날아가지 않고 `delay` 뒤에 바로 맞힌다</summary>
     public void MakeInstant(float delay) { instantDelay = Mathf.Max(0f, delay); }
 
+    AudioClip[] hitSounds;
+    float hitVolume;
+    /// <summary>맞는 순간 낼 소리 — 근접 유닛 (휘두르기 시작이 아니라 닿을 때 나야 맞는다)</summary>
+    public void SetHitSound(AudioClip[] clips, float volume) { hitSounds = clips; hitVolume = volume; }
+
     void Start() { flat = transform.position; }
 
     void Update()
@@ -80,12 +94,20 @@ public float lifeTime = 3f;
 
         if (instantDelay >= 0f)
         {
-            transform.position = target.transform.position;
+            transform.position = Impact;
             if (age >= instantDelay) { Hit(); Destroy(gameObject); }
             return;
         }
 
-        Vector3 dest = target.transform.position;
+        // 날아가는 사이 표적이 쓰러졌으면 바로 옆의 산 몹으로 틀어 준다 —
+        // 시체에 맞으면 피해가 통째로 사라진다. 옆에 없으면 시체로 그냥 간다
+        if (target.IsDying && GameLoop.Instance != null)
+        {
+            Monster near = GameLoop.Instance.FindNearest(target.transform.position, 6f);
+            if (near != null) target = near;
+        }
+
+        Vector3 dest = Impact;
         Vector3 before = transform.position;
         Vector3 next = Vector3.MoveTowards(flat, dest, speed * Time.deltaTime);
         traveled += (next - flat).magnitude;
@@ -112,8 +134,9 @@ public float lifeTime = 3f;
 
     void Hit()
     {
+        if (hitSounds != null) GenesisAudio.PlayAttack(hitSounds, hitVolume);
         if (hitFx != null)
-            AttackFx.Burst(hitFx, target.transform.position + Vector3.up * hitHeight, hitFxSize);
+            AttackFx.Burst(hitFx, target.hitRadius > 0f ? Impact : target.transform.position + Vector3.up * hitHeight, hitFxSize);
 
         float dmg = damage;
 
@@ -130,10 +153,15 @@ public float lifeTime = 3f;
             target.Confuse(confuseTime);
 
         // 그리스 ★ — 범위 피해. ★★면 반경 2배에 온전한 피해
+        Monster.DamageSource = source;   // 밸런스 통계 — 어느 유닛의 평타인지
         if (splashRadius > 0f && GameLoop.Instance != null)
             GameLoop.Instance.DamageArea(target.transform.position, splashRadius, dmg * splashFraction, target);
 
         target.TakeDamage(dmg);
+        Monster.DamageSource = null;
     }
+
+    /// <summary>밸런스 통계용 이름 ("평타 · 하피"). Unit.Fire 가 넣는다</summary>
+    [HideInInspector] public string source;
 
 }

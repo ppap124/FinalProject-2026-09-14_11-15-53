@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// 영혼으로 재료를 뽑는다.
@@ -14,9 +13,6 @@ using UnityEngine.InputSystem;
 public class MaterialShop : MonoBehaviour
 {
     public static MaterialShop Instance { get; private set; }
-
-    [Header("비용")]
-    public int materialPullCost = 1;
 
     [Header("확률")]
     [Tooltip("재료가 실제로 나올 확률. 나머지는 빈손")]
@@ -34,28 +30,6 @@ public class MaterialShop : MonoBehaviour
     void Awake()
     {
         Instance = this;
-    }
-
-    void Update()
-    {
-        // W — 재료 뽑기 (개발용 단축키)
-        if (Keyboard.current != null && Keyboard.current.wKey.wasPressedThisFrame)
-            Pull();
-    }
-
-    public bool CanPull()
-    {
-        return SoulBank.Instance != null
-            && MaterialBank.Instance != null
-            && SoulBank.Instance.CanAfford(materialPullCost);
-    }
-
-    public bool Pull()
-    {
-        if (!CanPull()) return false;
-        if (!SoulBank.Instance.TrySpend(materialPullCost)) return false;
-
-        return Grant();
     }
 
     /// <summary>영혼을 이미 패드가 먹었을 때 — 비용 없이 굴리기만 한다.</summary>
